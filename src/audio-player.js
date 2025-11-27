@@ -24,9 +24,15 @@ class SnapieAudioPlayer {
   detectMode() {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
+    const iframe = params.get('iframe');
     
     if (['minimal', 'compact', 'full'].includes(mode)) {
       this.mode = mode;
+    }
+    
+    // Enable iframe mode for clean embedding (no scrollbars)
+    if (iframe === '1' || iframe === 'true') {
+      document.body.classList.add('iframe-mode');
     }
     
     // Apply mode class to container

@@ -19,6 +19,15 @@ body {
   padding: 20px;
 }
 
+/* Iframe mode - no scrollbars, no padding, clean embed */
+body.iframe-mode {
+  background-color: transparent;
+  padding: 0;
+  margin: 0;
+  min-height: auto;
+  overflow: hidden;
+}
+
 #audio-player-container {
   background: white;
   border-radius: 12px;
@@ -26,6 +35,16 @@ body {
   padding: 20px;
   max-width: 600px;
   width: 100%;
+}
+
+/* Iframe mode styling */
+body.iframe-mode #audio-player-container {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  max-width: none;
+  margin: 0;
 }
 
 #player-header {

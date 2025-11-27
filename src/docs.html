@@ -295,6 +295,22 @@
 
       <pre><code>&lt;iframe src="https://audio.3speak.tv/play?a=abc123&amp;mode=minimal" height="80"&gt;&lt;/iframe&gt;</code></pre>
 
+      <h3>Iframe Mode (No Scrollbars)</h3>
+      <p>Add <code>&amp;iframe=1</code> for clean embedding without scrollbars - perfect for chat apps:</p>
+      <pre><code>&lt;!-- Clean embed with no scrollbars --&gt;
+&lt;iframe 
+  src="https://audio.3speak.tv/play?a=abc123&amp;mode=compact&amp;iframe=1"
+  width="100%" 
+  height="120"
+  frameborder="0"
+  scrolling="no"
+  allow="autoplay"&gt;
+&lt;/iframe&gt;</code></pre>
+
+      <div class="note">
+        <strong>💡 Tip:</strong> Use <code>iframe=1</code> to remove all padding and prevent scrollbars. Ideal for seamless integration in chat apps or tight spaces.
+      </div>
+
       <h2 id="upload-api">📤 Upload API</h2>
 
       <div class="endpoint">
