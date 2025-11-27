@@ -1,0 +1,296 @@
+/**
+ * Audio Styles - SnapieAudioPlayer
+ * Lightweight, mobile-first styling for audio player
+ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: #f5f5f5;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+#audio-player-container {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  max-width: 600px;
+  width: 100%;
+}
+
+#player-header {
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+#audio-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+#player-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: opacity 0.3s ease;
+}
+
+.control-btn {
+  background: #4a9eff;
+  border: none;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.1s ease;
+  flex-shrink: 0;
+}
+
+.control-btn:hover {
+  background: #3a8eef;
+  transform: scale(1.05);
+}
+
+.control-btn:active {
+  transform: scale(0.95);
+}
+
+.control-btn svg {
+  fill: white;
+}
+
+#play-pause-btn {
+  width: 56px;
+  height: 56px;
+}
+
+#speed-btn {
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+}
+
+#waveform-container {
+  flex: 1;
+  cursor: pointer;
+  min-height: 60px;
+}
+
+#time-display {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  color: #666;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.time-separator {
+  margin: 0 2px;
+}
+
+#error-message {
+  margin-top: 16px;
+  padding: 12px;
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 8px;
+  color: #c33;
+  font-size: 14px;
+  text-align: center;
+}
+
+#loading-spinner {
+  margin-top: 16px;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+}
+
+/* Mobile optimization */
+@media (max-width: 480px) {
+  #audio-player-container {
+    padding: 16px;
+  }
+
+  #player-controls {
+    gap: 8px;
+  }
+
+  .control-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  #play-pause-btn {
+    width: 52px;
+    height: 52px;
+  }
+
+  #speed-btn {
+    width: 48px;
+    height: 48px;
+    font-size: 13px;
+  }
+
+  #time-display {
+    font-size: 13px;
+    min-width: 75px;
+  }
+
+  #audio-title {
+    font-size: 15px;
+  }
+}
+
+/* Tablet optimization */
+@media (min-width: 481px) and (max-width: 768px) {
+  #audio-player-container {
+    max-width: 500px;
+  }
+}
+
+/* WaveSurfer custom styling */
+wave {
+  overflow: hidden !important;
+}
+
+/* Accessibility */
+.control-btn:focus {
+  outline: 2px solid #4a9eff;
+  outline-offset: 2px;
+}
+
+/* Loading animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+#loading-spinner {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Display Modes */
+
+/* Minimal Mode - Ultra compact for chat embeds */
+.mode-minimal {
+  padding: 8px 12px !important;
+  max-width: 400px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
+.mode-minimal #player-controls {
+  gap: 8px;
+}
+
+.mode-minimal .control-btn {
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.mode-minimal #play-pause-btn {
+  width: 36px !important;
+  height: 36px !important;
+}
+
+.mode-minimal #play-pause-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mode-minimal #waveform-container {
+  min-height: 30px !important;
+}
+
+.mode-minimal #time-display {
+  font-size: 11px;
+  min-width: 65px;
+}
+
+/* Compact Mode - Medium size for feeds */
+.mode-compact {
+  padding: 12px 16px !important;
+  max-width: 500px;
+}
+
+.mode-compact #player-controls {
+  gap: 10px;
+}
+
+.mode-compact .control-btn {
+  width: 40px !important;
+  height: 40px !important;
+}
+
+.mode-compact #play-pause-btn {
+  width: 48px !important;
+  height: 48px !important;
+}
+
+.mode-compact #speed-btn {
+  width: 44px !important;
+  height: 44px !important;
+  font-size: 12px;
+}
+
+.mode-compact #waveform-container {
+  min-height: 50px !important;
+}
+
+.mode-compact #time-display {
+  font-size: 13px;
+  min-width: 72px;
+}
+
+/* Full Mode uses default styles - no additional CSS needed */
+
+/* Mobile adjustments for modes */
+@media (max-width: 480px) {
+  .mode-minimal {
+    padding: 6px 10px !important;
+  }
+  
+  .mode-minimal .control-btn {
+    width: 28px !important;
+    height: 28px !important;
+  }
+  
+  .mode-minimal #play-pause-btn {
+    width: 32px !important;
+    height: 32px !important;
+  }
+  
+  .mode-minimal #play-pause-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+  
+  .mode-minimal #time-display {
+    font-size: 10px;
+    min-width: 60px;
+  }
+}

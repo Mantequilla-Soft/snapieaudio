@@ -1,0 +1,35 @@
+{
+  "name": "snapieaudioplayer",
+  "version": "1.0.0",
+  "description": "Lightweight HTML5 audio player for voice messages and audio content on 3speak/Snapie ecosystem",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "audio",
+    "player",
+    "waveform",
+    "ipfs",
+    "3speak",
+    "snapie"
+  ],
+  "author": "meno",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "form-data": "^4.0.5",
+    "ipfs-http-client": "^60.0.1",
+    "mongodb": "^6.3.0",
+    "multer": "^2.0.2",
+    "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

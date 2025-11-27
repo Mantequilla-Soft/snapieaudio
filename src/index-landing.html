@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SnapieAudioPlayer - Lightweight Audio Player for 3speak</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    header {
+      text-align: center;
+      color: white;
+      padding: 60px 20px;
+    }
+
+    h1 {
+      font-size: 3em;
+      margin-bottom: 20px;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .tagline {
+      font-size: 1.3em;
+      opacity: 0.9;
+      margin-bottom: 40px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 15px 30px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: transform 0.2s, box-shadow 0.2s;
+      display: inline-block;
+    }
+
+    .btn-primary {
+      background: white;
+      color: #667eea;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      border: 2px solid white;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .content-section {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      margin: 40px 0;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    h2 {
+      color: #667eea;
+      margin-bottom: 20px;
+      font-size: 2em;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 30px;
+      margin: 30px 0;
+    }
+
+    .feature {
+      text-align: center;
+    }
+
+    .feature-icon {
+      font-size: 3em;
+      margin-bottom: 15px;
+    }
+
+    .feature h3 {
+      color: #764ba2;
+      margin-bottom: 10px;
+    }
+
+    code {
+      background: #f4f4f4;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+    }
+
+    pre {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 20px 0;
+    }
+
+    .demo-preview {
+      background: #f9f9f9;
+      border: 2px dashed #ddd;
+      border-radius: 8px;
+      padding: 30px;
+      text-align: center;
+      margin: 20px 0;
+    }
+
+    footer {
+      text-align: center;
+      color: white;
+      padding: 40px 20px;
+      opacity: 0.9;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: space-around;
+      margin: 30px 0;
+      flex-wrap: wrap;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 2.5em;
+      font-weight: bold;
+      color: #667eea;
+    }
+
+    .stat-label {
+      color: #666;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <h1>🎵 SnapieAudioPlayer</h1>
+      <p class="tagline">Lightweight HTML5 Audio Player for Voice Messages & Audio Content</p>
+      <div class="btn-group">
+        <a href="/demo" class="btn btn-primary">Try Demo</a>
+        <a href="/docs" class="btn btn-secondary">Documentation</a>
+        <a href="https://github.com/your-repo" class="btn btn-secondary">GitHub</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <section class="content-section">
+      <h2>What is SnapieAudioPlayer?</h2>
+      <p>SnapieAudioPlayer is a lightweight, embeddable HTML5 audio player designed specifically for the 3speak/Snapie ecosystem. It provides instant audio playback with beautiful waveform visualization, powered by IPFS for decentralized storage.</p>
+      
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-number">&lt;100KB</div>
+          <div class="stat-label">Bundle Size</div>
+        </div>
+        <div class="stat">
+          <div class="stat-number">3</div>
+          <div class="stat-label">Display Modes</div>
+        </div>
+        <div class="stat">
+          <div class="stat-number">IPFS</div>
+          <div class="stat-label">Decentralized</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section">
+      <h2>Features</h2>
+      <div class="features">
+        <div class="feature">
+          <div class="feature-icon">🌊</div>
+          <h3>Waveform Visualization</h3>
+          <p>Beautiful audio waveforms powered by WaveSurfer.js</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">📱</div>
+          <h3>Responsive Design</h3>
+          <p>Works perfectly on desktop, tablet, and mobile devices</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🚀</div>
+          <h3>Fast Loading</h3>
+          <p>Local IPFS gateway for instant playback</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🎨</div>
+          <h3>Multiple Modes</h3>
+          <p>Minimal, compact, and full display options</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">🔐</div>
+          <h3>Secure Uploads</h3>
+          <p>API key authentication for audio uploads</p>
+        </div>
+        <div class="feature">
+          <div class="feature-icon">💾</div>
+          <h3>IPFS Storage</h3>
+          <p>Decentralized, permanent audio hosting</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="content-section">
+      <h2>Quick Start</h2>
+      <p>Embed audio in your app with a simple URL:</p>
+      <pre>https://audio.3speak.tv/play?a=&lt;permlink&gt;</pre>
+      
+      <p style="margin-top: 20px;">Or load by IPFS CID:</p>
+      <pre>https://audio.3speak.tv/play?cid=&lt;ipfs-cid&gt;</pre>
+
+      <div class="demo-preview">
+        <p><strong>Example Player:</strong></p>
+        <p><a href="/play?a=testaud1">View Sample Audio</a></p>
+      </div>
+    </section>
+
+    <section class="content-section">
+      <h2>Upload API</h2>
+      <p>Upload audio files programmatically with our REST API:</p>
+      <pre>curl -X POST https://audio.3speak.tv/api/audio/upload \
+  -H "X-API-Key: your-api-key" \
+  -F "audio=@your-audio.mp3" \
+  -F "duration=45" \
+  -F "format=mp3" \
+  -F "title=My Audio"</pre>
+      
+      <p style="margin-top: 20px;">Supported formats: <code>mp3</code>, <code>m4a</code>, <code>ogg</code>, <code>webm</code>, <code>wav</code></p>
+      <p>Max file size: <strong>50MB</strong></p>
+    </section>
+
+    <section class="content-section">
+      <h2>Built For</h2>
+      <ul style="list-style-position: inside; line-height: 2;">
+        <li>Voice messages in social apps</li>
+        <li>Podcast episodes</li>
+        <li>Audio comments and replies</li>
+        <li>Short audio clips and sound bites</li>
+        <li>Decentralized audio sharing</li>
+      </ul>
+    </section>
+  </div>
+
+  <footer>
+    <div class="container">
+      <p>&copy; 2025 SnapieAudioPlayer | Part of the 3speak Ecosystem</p>
+      <p style="margin-top: 10px;">
+        <a href="/demo" style="color: white; margin: 0 10px;">Demo</a> |
+        <a href="/docs" style="color: white; margin: 0 10px;">Docs</a> |
+        <a href="/admin" style="color: white; margin: 0 10px;">Admin</a>
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

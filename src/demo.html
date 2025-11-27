@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Demo Upload - SnapieAudioPlayer</title>
+  <link rel="stylesheet" href="/styles/audio-styles.css">
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .demo-container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    h1 {
+      color: #667eea;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+    }
+
+    .upload-area {
+      border: 3px dashed #ddd;
+      border-radius: 8px;
+      padding: 40px;
+      text-align: center;
+      margin: 30px 0;
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+
+    .upload-area:hover {
+      border-color: #667eea;
+      background: #f9f9f9;
+    }
+
+    .upload-area.dragover {
+      border-color: #667eea;
+      background: #f0f4ff;
+    }
+
+    .file-input {
+      display: none;
+    }
+
+    .upload-icon {
+      font-size: 4em;
+      margin-bottom: 20px;
+      color: #667eea;
+    }
+
+    .form-group {
+      margin: 20px 0;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    input, textarea {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border 0.3s;
+    }
+
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .btn {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 15px 40px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      width: 100%;
+      margin-top: 20px;
+    }
+
+    .btn:hover:not(:disabled) {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+
+    .progress {
+      height: 4px;
+      background: #f0f0f0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 20px 0;
+      display: none;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: #667eea;
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    .result {
+      margin-top: 30px;
+      padding: 20px;
+      background: #f0f4ff;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .result.success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+    }
+
+    .result.error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+    }
+
+    .result-title {
+      font-weight: 600;
+      margin-bottom: 10px;
+      font-size: 18px;
+    }
+
+    .result-link {
+      word-break: break-all;
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .warning-box {
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      padding: 15px;
+      border-radius: 6px;
+      margin: 20px 0;
+    }
+
+    .warning-box strong {
+      color: #856404;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .back-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    <h1>🎵 Demo Audio Upload</h1>
+    <p class="subtitle">Try uploading an audio file using our demo API</p>
+
+    <div class="warning-box">
+      <strong>⚠️ Demo Mode:</strong> Files uploaded here are temporary and will be deleted after 24 hours. They won't be migrated to permanent storage.
+    </div>
+
+    <form id="uploadForm">
+      <div class="upload-area" id="uploadArea">
+        <div class="upload-icon">📁</div>
+        <p><strong>Click to select</strong> or drag and drop your audio file</p>
+        <p style="color: #999; margin-top: 10px;">Supported: MP3, M4A, OGG, WEBM, WAV (Max 50MB)</p>
+        <input type="file" id="audioFile" class="file-input" accept="audio/*,.mp3,.m4a,.ogg,.webm,.wav" required>
+      </div>
+
+      <div class="form-group">
+        <label for="title">Title (optional)</label>
+        <input type="text" id="title" placeholder="My Audio Recording">
+      </div>
+
+      <div class="form-group">
+        <label for="description">Description (optional)</label>
+        <textarea id="description" rows="3" placeholder="Description of your audio..."></textarea>
+      </div>
+
+      <div class="progress" id="progress">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+
+      <button type="submit" class="btn" id="uploadBtn">Upload Audio</button>
+    </form>
+
+    <div class="result" id="result"></div>
+
+    <a href="/" class="back-link">← Back to Home</a>
+  </div>
+
+  <script>
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('audioFile');
+    const uploadForm = document.getElementById('uploadForm');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const progress = document.getElementById('progress');
+    const progressBar = document.getElementById('progressBar');
+    const result = document.getElementById('result');
+
+    // Click to upload
+    uploadArea.addEventListener('click', () => fileInput.click());
+
+    // Drag and drop
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('dragover');
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (files.length) {
+        fileInput.files = files;
+        updateFileName();
+      }
+    });
+
+    fileInput.addEventListener('change', updateFileName);
+
+    function updateFileName() {
+      if (fileInput.files.length) {
+        const fileName = fileInput.files[0].name;
+        uploadArea.querySelector('p').innerHTML = `<strong>Selected:</strong> ${fileName}`;
+      }
+    }
+
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      uploadBtn.disabled = true;
+      uploadBtn.textContent = 'Uploading...';
+      progress.style.display = 'block';
+      result.style.display = 'none';
+
+      try {
+        // Get audio duration
+        const duration = await getAudioDuration(file);
+        
+        const formData = new FormData();
+        formData.append('audio', file);
+        formData.append('duration', duration);
+        formData.append('format', file.name.split('.').pop());
+        formData.append('title', document.getElementById('title').value || file.name);
+        formData.append('description', document.getElementById('description').value || '');
+        formData.append('context_type', 'demo_upload');
+
+        const response = await fetch('/api/audio/upload', {
+          method: 'POST',
+          headers: {
+            'X-API-Key': 'sk_demo_b0d3f4b972c5065b701394df3de2f44fd59aa3244c58c478',
+            'X-User': 'demo-user'
+          },
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          showResult(true, data);
+        } else {
+          showResult(false, data);
+        }
+      } catch (error) {
+        showResult(false, { error: error.message });
+      } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload Audio';
+        progress.style.display = 'none';
+        progressBar.style.width = '0%';
+      }
+    });
+
+    function getAudioDuration(file) {
+      return new Promise((resolve) => {
+        const audio = new Audio();
+        audio.src = URL.createObjectURL(file);
+        audio.addEventListener('loadedmetadata', () => {
+          resolve(Math.round(audio.duration));
+          URL.revokeObjectURL(audio.src);
+        });
+        audio.addEventListener('error', () => {
+          resolve(45); // Default if we can't read duration
+          URL.revokeObjectURL(audio.src);
+        });
+      });
+    }
+
+    function showResult(success, data) {
+      result.style.display = 'block';
+      result.className = `result ${success ? 'success' : 'error'}`;
+      
+      if (success) {
+        result.innerHTML = `
+          <div class="result-title">✅ Upload Successful!</div>
+          <p><strong>Permlink:</strong> ${data.permlink}</p>
+          <p><strong>CID:</strong> ${data.cid}</p>
+          <p><strong>Play URL:</strong> <a href="${data.playUrl}" class="result-link" target="_blank">${data.playUrl}</a></p>
+          <p style="margin-top: 15px;"><em>⚠️ This demo file will be automatically deleted after 24 hours.</em></p>
+        `;
+      } else {
+        result.innerHTML = `
+          <div class="result-title">❌ Upload Failed</div>
+          <p>${data.error || 'Unknown error occurred'}</p>
+          ${data.message ? `<p style="color: #666; margin-top: 5px;">${data.message}</p>` : ''}
+        `;
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="3speak Audio Player - Lightweight voice message and audio player">
+  <title>3speak Audio Player</title>
+  <link rel="stylesheet" href="/styles/audio-styles.css">
+</head>
+<body>
+  <div id="audio-player-container">
+    <div id="player-header">
+      <span id="audio-title">Loading...</span>
+    </div>
+    
+    <div id="player-controls">
+      <button id="play-pause-btn" class="control-btn" aria-label="Play/Pause">
+        <svg id="play-icon" width="24" height="24" viewBox="0 0 24 24">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+        <svg id="pause-icon" width="24" height="24" viewBox="0 0 24 24" style="display: none;">
+          <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
+        </svg>
+      </button>
+      
+      <div id="waveform-container"></div>
+      
+      <div id="time-display">
+        <span id="current-time">0:00</span>
+        <span class="time-separator">/</span>
+        <span id="total-time">0:00</span>
+      </div>
+      
+      <button id="speed-btn" class="control-btn" aria-label="Playback speed">
+        1x
+      </button>
+    </div>
+    
+    <div id="error-message" style="display: none;">
+      Failed to load audio. Please try again.
+    </div>
+    
+    <div id="loading-spinner" style="display: none;">
+      Loading audio...
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/wavesurfer.js@7"></script>
+  <script src="/js/audio-player.js"></script>
+</body>
+</html>
