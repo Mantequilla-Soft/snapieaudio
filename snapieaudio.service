@@ -1,0 +1,26 @@
+[Unit]
+Description=SnapieAudioPlayer - Audio Player Service for 3speak
+After=network.target mongodb.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/snapieaudio
+Environment="NODE_ENV=production"
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=snapieaudio
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=4096
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
