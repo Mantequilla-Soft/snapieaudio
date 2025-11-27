@@ -337,8 +337,8 @@
           </tr>
           <tr>
             <td><code>X-User</code></td>
-            <td>No</td>
-            <td>Username (defaults to "anonymous")</td>
+            <td>Yes</td>
+            <td>Username (required for all uploads)</td>
           </tr>
           <tr>
             <td><code>Content-Type</code></td>
@@ -423,11 +423,13 @@
       </table>
 
       <div class="warning">
-        <strong>⚠️ File Limits:</strong>
+        <strong>⚠️ File Limits & Requirements:</strong>
         <ul style="margin-top: 10px;">
           <li>Max file size: <strong>50MB</strong></li>
           <li>Supported formats: mp3, m4a, ogg, webm, wav</li>
           <li>Rate limit: 10 uploads per minute</li>
+          <li><strong>Username required:</strong> X-User header must be provided</li>
+          <li><strong>Banned users:</strong> Users with upload restrictions will receive 403 Forbidden</li>
         </ul>
       </div>
 
@@ -677,6 +679,11 @@ def get_audio(permlink):
             <td>Missing or invalid API key</td>
           </tr>
           <tr>
+            <td><code>403</code></td>
+            <td>Forbidden</td>
+            <td>User is banned or lacks upload permissions</td>
+          </tr>
+          <tr>
             <td><code>404</code></td>
             <td>Not Found</td>
             <td>Audio not found</td>
@@ -722,6 +729,22 @@ def get_audio(permlink):
         <strong>Rate Limit Exceeded</strong>
         <pre style="margin-top: 10px;"><code>{
   "error": "Too many requests, please try again later"
+}</code></pre>
+      </div>
+
+      <div class="warning">
+        <strong>User Banned</strong>
+        <pre style="margin-top: 10px;"><code>{
+  "error": "Upload not allowed",
+  "message": "User is banned from uploading"
+}</code></pre>
+      </div>
+
+      <div class="warning">
+        <strong>Missing Username</strong>
+        <pre style="margin-top: 10px;"><code>{
+  "error": "Username required",
+  "message": "X-User header must be provided for uploads"
 }</code></pre>
       </div>
 
