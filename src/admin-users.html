@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Management - SnapieAudioPlayer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+    }
+
+    h1 {
+      color: #333;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn:hover {
+      background: #5568d3;
+    }
+
+    .btn-danger {
+      background: #dc3545;
+    }
+
+    .btn-danger:hover {
+      background: #c82333;
+    }
+
+    .btn-success {
+      background: #28a745;
+    }
+
+    .btn-success:hover {
+      background: #218838;
+    }
+
+    .search-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .filters {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .filter-btn {
+      padding: 8px 16px;
+      background: white;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .filter-btn.active {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+
+    table {
+      width: 100%;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    th, td {
+      padding: 16px;
+      text-align: left;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    th {
+      background: #f8f9fa;
+      font-weight: 600;
+      color: #555;
+    }
+
+    .badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-danger {
+      background: #ffe0e0;
+      color: #c82333;
+    }
+
+    .badge-success {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .badge-warning {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      max-width: 500px;
+      width: 90%;
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 20px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+    }
+
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+
+    .stats-row {
+      font-size: 14px;
+      color: #666;
+      margin: 8px 0;
+    }
+
+    .error {
+      color: #dc3545;
+      padding: 12px;
+      background: #ffe0e0;
+      border-radius: 6px;
+      margin: 20px 0;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>👥 User Management</h1>
+      <div>
+        <a href="/admin" class="btn btn-secondary">← Back to Storage</a>
+        <button class="btn" onclick="logout()">Logout</button>
+      </div>
+    </div>
+
+    <div class="search-bar">
+      <input 
+        type="text" 
+        class="search-input" 
+        placeholder="Search by username..." 
+        id="searchInput"
+        onkeyup="handleSearch()"
+      >
+      <button class="btn" onclick="loadUsers()">Search</button>
+    </div>
+
+    <div class="filters">
+      <button class="filter-btn active" onclick="filterUsers('all')">All Users</button>
+      <button class="filter-btn" onclick="filterUsers('banned')">Banned</button>
+      <button class="filter-btn" onclick="filterUsers('active')">Active</button>
+    </div>
+
+    <div id="error" class="error" style="display: none;"></div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Status</th>
+          <th>Joined</th>
+          <th>Uploads</th>
+          <th>Total Plays</th>
+          <th>Last Upload</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="usersTable">
+        <tr><td colspan="7" class="loading">Loading users...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Ban/Unban Modal -->
+  <div id="banModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-title" id="modalTitle">Confirm Action</div>
+      <div id="modalMessage"></div>
+      <div id="userStats" style="margin-top: 15px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeBanModal()">Cancel</button>
+        <button class="btn btn-danger" id="confirmBtn" onclick="confirmBan()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = '/api/admin';
+    let authToken = localStorage.getItem('admin_auth');
+    let currentFilter = 'all';
+    let currentUser = null;
+    let currentAction = null;
+
+    // Redirect if not logged in
+    if (!authToken) {
+      window.location.href = '/admin';
+    }
+
+    // Initial load
+    loadUsers();
+
+    async function loadUsers() {
+      const search = document.getElementById('searchInput').value;
+      const banned = currentFilter === 'banned' ? 'true' : currentFilter === 'active' ? 'false' : null;
+      
+      try {
+        const params = new URLSearchParams();
+        if (search) params.append('search', search);
+        if (banned !== null) params.append('banned', banned);
+        
+        const response = await fetch(`${API_URL}/users?${params}`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            logout();
+            return;
+          }
+          throw new Error('Failed to load users');
+        }
+
+        const data = await response.json();
+        displayUsers(data.users);
+      } catch (error) {
+        showError('Failed to load users: ' + error.message);
+      }
+    }
+
+    async function displayUsers(users) {
+      const tbody = document.getElementById('usersTable');
+      
+      if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading">No users found</td></tr>';
+        return;
+      }
+
+      // Load stats for all users
+      const usersWithStats = await Promise.all(
+        users.map(async user => {
+          try {
+            const response = await fetch(`${API_URL}/users/${user.username}`, {
+              headers: { 'Authorization': `Bearer ${authToken}` }
+            });
+            const data = await response.json();
+            return data;
+          } catch {
+            return { ...user, stats: { totalUploads: 0, totalPlays: 0, lastUpload: null } };
+          }
+        })
+      );
+
+      tbody.innerHTML = usersWithStats.map(user => {
+        const statusBadge = user.banned 
+          ? '<span class="badge badge-danger">Banned</span>'
+          : '<span class="badge badge-success">Active</span>';
+        
+        const joinedDate = new Date(user.joined).toLocaleDateString();
+        const lastUpload = user.stats?.lastUpload 
+          ? new Date(user.stats.lastUpload).toLocaleDateString()
+          : 'Never';
+
+        const actionBtn = user.banned
+          ? `<button class="btn btn-success" onclick="openBanModal('${user.username}', false)">Unban</button>`
+          : `<button class="btn btn-danger" onclick="openBanModal('${user.username}', true)">Ban</button>`;
+
+        return `
+          <tr>
+            <td><strong>${user.username}</strong></td>
+            <td>${statusBadge}</td>
+            <td>${joinedDate}</td>
+            <td>${user.stats?.totalUploads || 0}</td>
+            <td>${user.stats?.totalPlays || 0}</td>
+            <td>${lastUpload}</td>
+            <td>${actionBtn}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function openBanModal(username, shouldBan) {
+      currentUser = username;
+      currentAction = shouldBan;
+      
+      const modal = document.getElementById('banModal');
+      const title = document.getElementById('modalTitle');
+      const message = document.getElementById('modalMessage');
+      const confirmBtn = document.getElementById('confirmBtn');
+      const statsDiv = document.getElementById('userStats');
+
+      // Load user stats
+      try {
+        const response = await fetch(`${API_URL}/users/${username}`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const userData = await response.json();
+
+        title.textContent = shouldBan ? 'Ban User' : 'Unban User';
+        message.textContent = shouldBan 
+          ? `Are you sure you want to ban ${username}? They will not be able to upload audio.`
+          : `Are you sure you want to unban ${username}? They will be able to upload audio again.`;
+        
+        confirmBtn.textContent = shouldBan ? 'Ban User' : 'Unban User';
+        confirmBtn.className = shouldBan ? 'btn btn-danger' : 'btn btn-success';
+
+        statsDiv.innerHTML = `
+          <div class="stats-row"><strong>Total Uploads:</strong> ${userData.stats?.totalUploads || 0}</div>
+          <div class="stats-row"><strong>Total Plays:</strong> ${userData.stats?.totalPlays || 0}</div>
+          <div class="stats-row"><strong>Last Upload:</strong> ${userData.stats?.lastUpload ? new Date(userData.stats.lastUpload).toLocaleString() : 'Never'}</div>
+        `;
+      } catch (error) {
+        statsDiv.innerHTML = '<div class="stats-row" style="color: #dc3545;">Failed to load user stats</div>';
+      }
+
+      modal.classList.add('active');
+    }
+
+    function closeBanModal() {
+      document.getElementById('banModal').classList.remove('active');
+      currentUser = null;
+      currentAction = null;
+    }
+
+    async function confirmBan() {
+      if (!currentUser) return;
+
+      try {
+        const response = await fetch(`${API_URL}/users/${currentUser}/ban`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ banned: currentAction })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to update user');
+        }
+
+        closeBanModal();
+        loadUsers();
+      } catch (error) {
+        showError('Failed to update user: ' + error.message);
+      }
+    }
+
+    function filterUsers(filter) {
+      currentFilter = filter;
+      
+      // Update active button
+      document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      event.target.classList.add('active');
+      
+      loadUsers();
+    }
+
+    function handleSearch() {
+      // Debounce search
+      clearTimeout(window.searchTimeout);
+      window.searchTimeout = setTimeout(() => {
+        loadUsers();
+      }, 500);
+    }
+
+    function showError(message) {
+      const errorDiv = document.getElementById('error');
+      errorDiv.textContent = message;
+      errorDiv.style.display = 'block';
+      setTimeout(() => {
+        errorDiv.style.display = 'none';
+      }, 5000);
+    }
+
+    function logout() {
+      localStorage.removeItem('admin_auth');
+      window.location.href = '/admin';
+    }
+  </script>
+</body>
+</html>

@@ -43,6 +43,11 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, '../src/admin.html'));
 });
 
+// Admin user management page
+app.get('/admin/users', (req, res) => {
+  res.sendFile(path.join(__dirname, '../src/admin-users.html'));
+});
+
 // Player page route
 app.get('/play', (req, res) => {
   res.sendFile(path.join(__dirname, '../src/index.html'));
