@@ -153,7 +153,7 @@ class AudioMessage {
       
       console.log(`[incrementPlays] Result:`, result);
       
-      return result.value;
+      return result;
     } catch (error) {
       console.error('Error incrementing plays:', error);
       throw error;
