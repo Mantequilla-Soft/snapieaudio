@@ -1,4 +1,5 @@
 const AudioMessage = require('../models/AudioMessage');
+const ContentCreator = require('../models/ContentCreator');
 
 /**
  * Get audio metadata by permlink or CID
@@ -74,6 +75,31 @@ exports.uploadAudio = async (req, res) => {
       return res.status(400).json({ error: 'No audio file provided' });
     }
 
+    // Require username (no more anonymous uploads)
+    const username = req.headers['x-user'] || req.user;
+    if (!username || username === 'anonymous') {
+      return res.status(400).json({ 
+        error: 'Username required',
+        message: 'X-User header must be provided for uploads'
+      });
+    }
+
+    // Check if user exists and has upload permissions
+    const uploadCheck = await ContentCreator.canUserUpload(username);
+    
+    if (!uploadCheck.allowed) {
+      return res.status(403).json({ 
+        error: 'Upload not allowed',
+        message: uploadCheck.reason
+      });
+    }
+
+    // Create user if doesn't exist
+    if (uploadCheck.reason === 'new_user') {
+      await ContentCreator.create(username);
+      console.log(`✓ Created new user account: ${username}`);
+    }
+
     // Get metadata from request body (trust client initially)
     const {
       duration,
@@ -136,7 +162,7 @@ exports.uploadAudio = async (req, res) => {
     
     // Create audio record in MongoDB
     const audioData = {
-      owner: req.user || 'anonymous', // Set by auth middleware
+      owner: username, // Validated username
       audio_cid,
       ipfs_status: 'pinned_local',
       pinned_nodes: ['local'],

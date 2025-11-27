@@ -1,4 +1,5 @@
 const AudioMessage = require('../models/AudioMessage');
+const ContentCreator = require('../models/ContentCreator');
 
 /**
  * Admin login
@@ -121,5 +122,87 @@ exports.deleteFile = async (req, res) => {
   } catch (error) {
     console.error('Error deleting file:', error);
     res.status(500).json({ error: 'Failed to delete file' });
+  }
+};
+
+/**
+ * Get users list with pagination and search
+ */
+exports.getUsers = async (req, res) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 50, 
+      search = '', 
+      banned = null 
+    } = req.query;
+
+    const result = await ContentCreator.getUsers({
+      page: parseInt(page),
+      limit: parseInt(limit),
+      search,
+      banned: banned === 'true' ? true : banned === 'false' ? false : null
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error getting users:', error);
+    res.status(500).json({ error: 'Failed to get users' });
+  }
+};
+
+/**
+ * Get user details with upload stats
+ */
+exports.getUserDetails = async (req, res) => {
+  try {
+    const { username } = req.params;
+
+    const [user, stats] = await Promise.all([
+      ContentCreator.findByUsername(username),
+      ContentCreator.getUserStats(username)
+    ]);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({
+      ...user,
+      stats
+    });
+  } catch (error) {
+    console.error('Error getting user details:', error);
+    res.status(500).json({ error: 'Failed to get user details' });
+  }
+};
+
+/**
+ * Toggle user ban status
+ */
+exports.toggleUserBan = async (req, res) => {
+  try {
+    const { username } = req.params;
+    const { banned } = req.body;
+
+    if (typeof banned !== 'boolean') {
+      return res.status(400).json({ error: 'banned must be a boolean' });
+    }
+
+    const updatedUser = await ContentCreator.updateBanStatus(username, banned);
+
+    res.json({ 
+      success: true, 
+      message: banned ? 'User banned successfully' : 'User unbanned successfully',
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error('Error toggling user ban:', error);
+    
+    if (error.message === 'User not found') {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.status(500).json({ error: 'Failed to update user' });
   }
 };

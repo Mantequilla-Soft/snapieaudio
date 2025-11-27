@@ -44,4 +44,19 @@ router.get('/files', requireAuth, adminController.getFiles);
  */
 router.delete('/files/:permlink', requireAuth, adminController.deleteFile);
 
+/**
+ * GET /api/admin/users - Get users list with pagination and search
+ */
+router.get('/users', requireAuth, adminController.getUsers);
+
+/**
+ * GET /api/admin/users/:username - Get user details with stats
+ */
+router.get('/users/:username', requireAuth, adminController.getUserDetails);
+
+/**
+ * PUT /api/admin/users/:username/ban - Toggle user ban status
+ */
+router.put('/users/:username/ban', requireAuth, adminController.toggleUserBan);
+
 module.exports = router;
