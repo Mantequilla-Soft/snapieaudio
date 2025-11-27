@@ -165,13 +165,17 @@ exports.uploadAudio = async (req, res) => {
 
     console.log(`✓ Audio created: ${audio.permlink}`);
 
+    // Determine protocol - use X-Forwarded-Proto if behind proxy, otherwise force https in production
+    const proto = req.get('X-Forwarded-Proto') || (process.env.NODE_ENV === 'production' ? 'https' : req.protocol);
+    const host = req.get('host');
+
     // Return success response
     res.status(201).json({
       success: true,
       permlink: audio.permlink,
       cid: audio_cid,
-      playUrl: `${req.protocol}://${req.get('host')}/play?a=${audio.permlink}`,
-      apiUrl: `${req.protocol}://${req.get('host')}/api/audio?a=${audio.permlink}`
+      playUrl: `${proto}://${host}/play?a=${audio.permlink}`,
+      apiUrl: `${proto}://${host}/api/audio?a=${audio.permlink}`
     });
   } catch (error) {
     console.error('Error uploading audio:', error);
