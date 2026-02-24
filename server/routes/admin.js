@@ -40,6 +40,11 @@ router.get('/stats', requireAuth, adminController.getStats);
 router.get('/files', requireAuth, adminController.getFiles);
 
 /**
+ * GET /api/admin/category-stats - Get breakdown by category
+ */
+router.get('/category-stats', requireAuth, adminController.getCategoryStats);
+
+/**
  * DELETE /api/admin/files/:permlink - Delete audio file
  */
 router.delete('/files/:permlink', requireAuth, adminController.deleteFile);

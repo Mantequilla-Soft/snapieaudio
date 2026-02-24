@@ -12,6 +12,8 @@ Lightweight HTML5 audio player for voice messages and audio content on the 3spea
 - **⏩ Speed Control** - 1x, 1.5x, 2x playback speeds
 - **📈 Play Tracking** - MongoDB-based analytics and engagement metrics
 - **🔒 Rate-limited** - Protection against API abuse
+- **🎵 Content Categories** - Distinguish between ephemeral voice messages and permanent content (podcasts, songs, interviews)
+- **🖼️ Thumbnail Support** - Optional cover art/artwork URLs for audio entries
 
 ## 🏗️ Architecture
 
@@ -110,9 +112,11 @@ Response:
   "permlink": "dkojohs",
   "author": "meno",
   "cid": "bafybeigdyrzt5...",
+  "category": "voice_message",
   "duration": 45,
   "format": "mp3",
   "waveform": [0.2, 0.5, 0.8, ...],
+  "thumbnail_url": "https://files.hive.blog/file/hiveimages/cover.jpg",
   "audioUrl": "https://ipfs.3speak.tv/ipfs/bafy...",
   "audioUrlFallback": "https://dweb.link/ipfs/bafy...",
   "plays": 150
@@ -143,8 +147,10 @@ Response:
   permlink: "dkojohs",        // Unique 8-char ID
   author: "meno",
   cid: "bafybeigdyrzt5...",  // IPFS CID
+  category: "voice_message",  // Content type: voice_message, podcast, song, interview, audiobook, noise_sample
   duration: 45,               // Seconds
   format: "mp3",
+  thumbnail_url: "https://files.hive.blog/...",  // Optional cover art
   waveform: {
     peaks: [0.2, 0.5, ...],
     length: 100

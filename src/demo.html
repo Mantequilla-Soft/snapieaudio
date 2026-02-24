@@ -217,6 +217,20 @@
         <small style="color: #999; margin-top: 5px; display: block;">URL to cover art image from Hive or other service</small>
       </div>
 
+      <div class="form-group">
+        <label for="category">Content Type (optional)</label>
+        <select id="category" style="width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px;">
+          <option value="">Default (Voice Message)</option>
+          <option value="voice_message">Voice Message (Ephemeral)</option>
+          <option value="podcast">Podcast (Permanent)</option>
+          <option value="song">Song (Permanent)</option>
+          <option value="interview">Interview (Permanent)</option>
+          <option value="audiobook">Audiobook (Permanent)</option>
+          <option value="noise_sample">Noise Sample (Temporary)</option>
+        </select>
+        <small style="color: #999; margin-top: 5px; display: block;">Determines if this content gets distributed to multiple nodes</small>
+      </div>
+
       <div class="progress" id="progress">
         <div class="progress-bar" id="progressBar"></div>
       </div>
@@ -292,6 +306,7 @@
         formData.append('title', document.getElementById('title').value || file.name);
         formData.append('description', document.getElementById('description').value || '');
         formData.append('thumbnail_url', document.getElementById('thumbnail').value || '');
+        formData.append('category', document.getElementById('category').value || 'voice_message');
         formData.append('context_type', 'demo_upload');
 
         const response = await fetch('/api/audio/upload', {

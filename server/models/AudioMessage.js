@@ -110,6 +110,7 @@ class AudioMessage {
         permlink: audio.permlink,
         owner: audio.owner, // Changed from 'author' to match schema
         audio_cid: audio.audio_cid,
+        category: audio.category || 'voice_message',
         duration: audio.duration,
         format: audio.format,
         bitrate: audio.bitrate,
@@ -125,7 +126,8 @@ class AudioMessage {
         createdAt: audio.createdAt,
         context_type: audio.context_type,
         context_id: audio.context_id,
-        thumbnail_url: audio.thumbnail_url || null
+        thumbnail_url: audio.thumbnail_url || null,
+        ipfs_status: audio.ipfs_status
       };
     } catch (error) {
       console.error('Error finding audio:', error);
@@ -176,6 +178,9 @@ class AudioMessage {
         owner: audioData.owner,
         permlink: audioData.permlink || AudioMessage.generatePermlink(),
         frontend_app: audioData.frontend_app || 'snapie',
+        
+        // Content Classification
+        category: audioData.category || 'voice_message',
         
         // IPFS Storage
         audio_cid: audioData.audio_cid,

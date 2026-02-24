@@ -115,7 +115,8 @@ exports.uploadAudio = async (req, res) => {
       context_type,
       context_id,
       reply_to,
-      thumbnail_url
+      thumbnail_url,
+      category
     } = req.body;
 
     // Validate required fields
@@ -180,6 +181,7 @@ exports.uploadAudio = async (req, res) => {
       description: description || null,
       tags: tagsArray,
       thumbnail_url: thumbnail_url || null,
+      category: category || 'voice_message',
       context_type: context_type || 'voice_message',
       context_id: context_id || null,
       reply_to: reply_to || null,

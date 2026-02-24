@@ -58,7 +58,7 @@ exports.getStats = async (req, res) => {
  */
 exports.getFiles = async (req, res) => {
   try {
-    const { filter = 'all' } = req.query;
+    const { filter = 'all', category } = req.query;
     const { MongoClient } = require('mongodb');
     const client = new MongoClient(process.env.MONGODB_URI);
     await client.connect();
@@ -67,12 +67,19 @@ exports.getFiles = async (req, res) => {
     const collection = db.collection(process.env.MONGODB_COLLECTION_AUDIO);
 
     let query = {};
+    
+    // Category filter (new)
+    if (category) {
+      query.category = category;
+    }
+    
+    // Migration status filters (existing)
     if (filter === 'demo') {
-      query = { migration_status: 'skip' };
+      query.migration_status = 'skip';
     } else if (filter === 'pending') {
-      query = { migration_status: 'pending' };
+      query.migration_status = 'pending';
     } else if (filter === 'skip') {
-      query = { migration_status: 'skip' };
+      query.migration_status = 'skip';
     }
 
     const files = await collection
@@ -87,6 +94,39 @@ exports.getFiles = async (req, res) => {
   } catch (error) {
     console.error('Error getting files:', error);
     res.status(500).json({ error: 'Failed to get files' });
+  }
+};
+
+/**
+ * Get breakdown of content by category
+ */
+exports.getCategoryStats = async (req, res) => {
+  try {
+    const { MongoClient } = require('mongodb');
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    
+    const db = client.db(process.env.MONGODB_DATABASE);
+    const collection = db.collection(process.env.MONGODB_COLLECTION_AUDIO);
+
+    const stats = await collection.aggregate([
+      {
+        $group: {
+          _id: '$category',
+          count: { $sum: 1 },
+          totalSize: { $sum: '$size' },
+          avgDuration: { $avg: '$duration' }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]).toArray();
+
+    await client.close();
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Error getting category stats:', error);
+    res.status(500).json({ error: 'Failed to get category stats' });
   }
 };
 
