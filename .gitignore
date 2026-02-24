@@ -32,3 +32,6 @@ build/
 testaudio.mp3
 test*.mp3
 test*.m4a
+
+# internal docs
+/internal-docs/

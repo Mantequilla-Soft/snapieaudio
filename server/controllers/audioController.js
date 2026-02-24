@@ -114,7 +114,8 @@ exports.uploadAudio = async (req, res) => {
       tags,
       context_type,
       context_id,
-      reply_to
+      reply_to,
+      thumbnail_url
     } = req.body;
 
     // Validate required fields
@@ -178,6 +179,7 @@ exports.uploadAudio = async (req, res) => {
       title: title || null,
       description: description || null,
       tags: tagsArray,
+      thumbnail_url: thumbnail_url || null,
       context_type: context_type || 'voice_message',
       context_id: context_id || null,
       reply_to: reply_to || null,
@@ -209,6 +211,55 @@ exports.uploadAudio = async (req, res) => {
       error: 'Failed to upload audio',
       message: error.message 
     });
+  }
+};
+
+/**
+ * Update thumbnail URL for existing audio
+ */
+exports.updateThumbnail = async (req, res) => {
+  try {
+    const { permlink } = req.params;
+    const { thumbnail_url } = req.body;
+    const username = req.headers['x-user'] || req.user;
+
+    if (!permlink) {
+      return res.status(400).json({ error: 'Missing permlink' });
+    }
+
+    if (!thumbnail_url) {
+      return res.status(400).json({ error: 'thumbnail_url is required' });
+    }
+
+    // Validate URL format
+    try {
+      const url = new URL(thumbnail_url);
+      if (!['http:', 'https:'].includes(url.protocol)) {
+        return res.status(400).json({ error: 'URL must be http:// or https://' });
+      }
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    // Check length
+    if (thumbnail_url.length > 2048) {
+      return res.status(400).json({ error: 'URL too long (max 2048 characters)' });
+    }
+
+    const result = await AudioMessage.updateThumbnail(permlink, username, thumbnail_url);
+
+    if (!result) {
+      return res.status(404).json({ error: 'Audio not found or not authorized' });
+    }
+
+    res.json({
+      success: true,
+      permlink: result.permlink,
+      thumbnail_url: result.thumbnail_url
+    });
+  } catch (error) {
+    console.error('Error updating thumbnail:', error);
+    res.status(500).json({ error: 'Failed to update thumbnail' });
   }
 };
 

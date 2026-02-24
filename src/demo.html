@@ -211,6 +211,12 @@
         <textarea id="description" rows="3" placeholder="Description of your audio..."></textarea>
       </div>
 
+      <div class="form-group">
+        <label for="thumbnail">Thumbnail URL (optional)</label>
+        <input type="url" id="thumbnail" placeholder="https://files.hive.blog/file/hiveimages/abc123.jpg">
+        <small style="color: #999; margin-top: 5px; display: block;">URL to cover art image from Hive or other service</small>
+      </div>
+
       <div class="progress" id="progress">
         <div class="progress-bar" id="progressBar"></div>
       </div>
@@ -285,6 +291,7 @@
         formData.append('format', file.name.split('.').pop());
         formData.append('title', document.getElementById('title').value || file.name);
         formData.append('description', document.getElementById('description').value || '');
+        formData.append('thumbnail_url', document.getElementById('thumbnail').value || '');
         formData.append('context_type', 'demo_upload');
 
         const response = await fetch('/api/audio/upload', {

@@ -124,7 +124,8 @@ class AudioMessage {
         likes: audio.likes || 0,
         createdAt: audio.createdAt,
         context_type: audio.context_type,
-        context_id: audio.context_id
+        context_id: audio.context_id,
+        thumbnail_url: audio.thumbnail_url || null
       };
     } catch (error) {
       console.error('Error finding audio:', error);
@@ -198,6 +199,7 @@ class AudioMessage {
         title: audioData.title || null,
         description: audioData.description || null,
         tags: audioData.tags || [],
+        thumbnail_url: audioData.thumbnail_url || null,
         
         // Context
         context_type: audioData.context_type || 'voice_message',
@@ -234,6 +236,34 @@ class AudioMessage {
       return { ...document, _id: result.insertedId };
     } catch (error) {
       console.error('Error creating audio:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update thumbnail URL for audio
+   */
+  static async updateThumbnail(permlink, username, thumbnail_url) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      // Only owner can update thumbnail
+      const result = await collection.findOneAndUpdate(
+        { permlink, owner: username, status: 'published' },
+        { 
+          $set: { 
+            thumbnail_url,
+            updatedAt: new Date()
+          }
+        },
+        { returnDocument: 'after' }
+      );
+
+      // Return the updated document (null if not found/authorized)
+      return result;
+    } catch (error) {
+      console.error('Error updating thumbnail:', error);
       throw error;
     }
   }

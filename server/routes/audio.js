@@ -43,4 +43,14 @@ router.post('/upload',
   audioController.uploadAudio
 );
 
+/**
+ * PATCH /api/audio/:permlink/thumbnail - Update thumbnail URL
+ * Requires: API key, X-User header
+ * Body: { thumbnail_url: "https://..." }
+ */
+router.patch('/:permlink/thumbnail',
+  validateApiKey,
+  audioController.updateThumbnail
+);
+
 module.exports = router;
