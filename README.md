@@ -14,6 +14,8 @@ Lightweight HTML5 audio player for voice messages and audio content on the 3spea
 - **🔒 Rate-limited** - Protection against API abuse
 - **🎵 Content Categories** - Distinguish between ephemeral voice messages and permanent content (podcasts, songs, interviews)
 - **🖼️ Thumbnail Support** - Optional cover art/artwork URLs for audio entries
+- **📡 Feed API** - Public endpoints for building discovery feeds, trending pages, tag browsing, and user profiles
+- **🏷️ Tag System** - Content tagging for discovery and filtering
 
 ## 🏗️ Architecture
 
@@ -116,11 +118,62 @@ Response:
   "duration": 45,
   "format": "mp3",
   "waveform": [0.2, 0.5, 0.8, ...],
+  "title": "My Audio",
+  "description": "This is an example audio recording",
+  "tags": ["music", "podcast", "interview"],
   "thumbnail_url": "https://files.hive.blog/file/hiveimages/cover.jpg",
+  "post_permlink": "my-audio-snap-2026",
   "audioUrl": "https://ipfs.3speak.tv/ipfs/bafy...",
   "audioUrlFallback": "https://dweb.link/ipfs/bafy...",
   "plays": 150
 }
+```
+
+### Get Audio Feed
+
+```http
+GET /api/audio/feed?limit=20&offset=0&sort=newest
+
+Query Parameters:
+- limit: Items per page (default 20, max 100)
+- offset: Pagination offset (default 0)
+- sort: newest|oldest|plays|trending (default newest)
+- category: voice_message|podcast|song|interview|audiobook|noise_sample
+- tag: Filter by tag (e.g., "music")
+- owner: Filter by username
+
+Response:
+{
+  "items": [
+    {
+      "permlink": "abc123xy",
+      "owner": "meno",
+      "audio_cid": "QmdMsEX...",
+      "category": "podcast",
+      "duration": 1800,
+      "format": "mp3",
+      "title": "My Podcast",
+      "tags": ["podcast", "tech"],
+      "thumbnail_url": "https://...",
+      "plays": 152,
+      "createdAt": "2026-02-20T10:30:00Z",
+      "audioUrl": "https://ipfs.3speak.tv/ipfs/...",
+      ...
+    }
+  ],
+  "pagination": {
+    "limit": 20,
+    "offset": 0,
+    "total": 156,
+    "hasMore": true
+  }
+}
+
+Examples:
+GET /api/audio/feed?sort=plays              # Trending audio
+GET /api/audio/feed?category=podcast        # All podcasts
+GET /api/audio/feed?tag=music&sort=plays    # Trending music
+GET /api/audio/feed?owner=meno              # User's audio
 ```
 
 ### Track Play Count
@@ -150,7 +203,11 @@ Response:
   category: "voice_message",  // Content type: voice_message, podcast, song, interview, audiobook, noise_sample
   duration: 45,               // Seconds
   format: "mp3",
+  title: "My Audio",
+  description: "This is an example audio recording",
+  tags: ["music", "podcast"],  // Array of content discovery tags
   thumbnail_url: "https://files.hive.blog/...",  // Optional cover art
+  post_permlink: "my-audio-snap-2026",  // Optional blockchain post reference
   waveform: {
     peaks: [0.2, 0.5, ...],
     length: 100

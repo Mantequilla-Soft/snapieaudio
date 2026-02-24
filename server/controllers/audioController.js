@@ -116,7 +116,8 @@ exports.uploadAudio = async (req, res) => {
       context_id,
       reply_to,
       thumbnail_url,
-      category
+      category,
+      post_permlink
     } = req.body;
 
     // Validate required fields
@@ -181,6 +182,7 @@ exports.uploadAudio = async (req, res) => {
       description: description || null,
       tags: tagsArray,
       thumbnail_url: thumbnail_url || null,
+      post_permlink: post_permlink || null,
       category: category || 'voice_message',
       context_type: context_type || 'voice_message',
       context_id: context_id || null,
@@ -262,6 +264,174 @@ exports.updateThumbnail = async (req, res) => {
   } catch (error) {
     console.error('Error updating thumbnail:', error);
     res.status(500).json({ error: 'Failed to update thumbnail' });
+  }
+};
+
+/**
+ * Update blockchain post permlink for existing audio
+ */
+exports.updatePostPermlink = async (req, res) => {
+  try {
+    const { permlink } = req.params;
+    const { post_permlink } = req.body;
+    const username = req.headers['x-user'] || req.user;
+
+    if (!permlink) {
+      return res.status(400).json({ error: 'Missing permlink' });
+    }
+
+    if (!post_permlink) {
+      return res.status(400).json({ error: 'post_permlink is required' });
+    }
+
+    // Validate format (basic permlink validation - alphanumeric, hyphens, underscores)
+    if (!/^[a-z0-9-_]+$/i.test(post_permlink)) {
+      return res.status(400).json({ error: 'Invalid post_permlink format' });
+    }
+
+    // Check length
+    if (post_permlink.length > 256) {
+      return res.status(400).json({ error: 'post_permlink too long (max 256 characters)' });
+    }
+
+    const result = await AudioMessage.updatePostPermlink(permlink, username, post_permlink);
+
+    if (!result) {
+      return res.status(404).json({ error: 'Audio not found or not authorized' });
+    }
+
+    res.json({
+      success: true,
+      permlink: result.permlink,
+      post_permlink: result.post_permlink
+    });
+  } catch (error) {
+    console.error('Error updating post_permlink:', error);
+    res.status(500).json({ error: 'Failed to update post_permlink' });
+  }
+};
+
+/**
+ * Get audio feed with filters, sorting, and pagination
+ */
+exports.getFeed = async (req, res) => {
+  try {
+    const {
+      limit = '20',
+      offset = '0',
+      sort = 'newest',
+      tag,
+      category,
+      owner
+    } = req.query;
+
+    // Parse and validate pagination
+    const limitNum = Math.min(parseInt(limit) || 20, 100); // Max 100 items
+    const offsetNum = parseInt(offset) || 0;
+
+    // Validate sort option
+    const validSorts = ['newest', 'oldest', 'plays', 'trending'];
+    const sortOption = validSorts.includes(sort) ? sort : 'newest';
+
+    // Build query
+    const query = { status: 'published' };
+
+    if (category) {
+      query.category = category;
+    }
+
+    if (owner) {
+      query.owner = owner;
+    }
+
+    if (tag) {
+      query.tags = tag; // MongoDB will match if tag exists in array
+    }
+
+    // Build sort criteria
+    let sortCriteria = {};
+    switch (sortOption) {
+      case 'oldest':
+        sortCriteria = { createdAt: 1 };
+        break;
+      case 'plays':
+        sortCriteria = { plays: -1, createdAt: -1 };
+        break;
+      case 'trending':
+        // Trending: combination of recent plays and total plays
+        // For now, sort by plays descending with recent content boosted
+        sortCriteria = { plays: -1, lastPlayed: -1, createdAt: -1 };
+        break;
+      case 'newest':
+      default:
+        sortCriteria = { createdAt: -1 };
+        break;
+    }
+
+    const { MongoClient } = require('mongodb');
+    const client = new MongoClient(process.env.MONGODB_URI);
+    await client.connect();
+    
+    const db = client.db(process.env.MONGODB_DATABASE);
+    const collectionName = process.env.MONGODB_COLLECTION_AUDIO || 'embed-audio';
+    const collection = db.collection(collectionName);
+
+    // Get total count for pagination metadata
+    const total = await collection.countDocuments(query);
+
+    // Get paginated results
+    const results = await collection
+      .find(query)
+      .sort(sortCriteria)
+      .skip(offsetNum)
+      .limit(limitNum)
+      .toArray();
+
+    await client.close();
+
+    // Transform results to match API response format
+    const primaryGateway = process.env.IPFS_PRIMARY_GATEWAY;
+    const fallbackGateway = process.env.IPFS_FALLBACK_GATEWAY_1;
+
+    const items = results.map(audio => ({
+      permlink: audio.permlink,
+      owner: audio.owner,
+      audio_cid: audio.audio_cid,
+      category: audio.category || 'voice_message',
+      duration: audio.duration,
+      format: audio.format,
+      title: audio.title,
+      description: audio.description,
+      tags: audio.tags || [],
+      thumbnail_url: audio.thumbnail_url || null,
+      post_permlink: audio.post_permlink || null,
+      plays: audio.plays || 0,
+      likes: audio.likes || 0,
+      createdAt: audio.createdAt,
+      audioUrl: `${primaryGateway}/ipfs/${audio.audio_cid}`,
+      audioUrlFallback: `${fallbackGateway}/ipfs/${audio.audio_cid}`
+    }));
+
+    // Return paginated response
+    res.json({
+      items,
+      pagination: {
+        limit: limitNum,
+        offset: offsetNum,
+        total,
+        hasMore: offsetNum + limitNum < total
+      },
+      filters: {
+        sort: sortOption,
+        category: category || null,
+        tag: tag || null,
+        owner: owner || null
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting feed:', error);
+    res.status(500).json({ error: 'Failed to get feed' });
   }
 };
 

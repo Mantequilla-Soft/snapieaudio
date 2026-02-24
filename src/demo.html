@@ -212,6 +212,12 @@
       </div>
 
       <div class="form-group">
+        <label for="tags">Tags (optional)</label>
+        <input type="text" id="tags" placeholder="music, podcast, interview (comma-separated)">
+        <small style="color: #999; margin-top: 5px; display: block;">Comma-separated tags for content discovery</small>
+      </div>
+
+      <div class="form-group">
         <label for="thumbnail">Thumbnail URL (optional)</label>
         <input type="url" id="thumbnail" placeholder="https://files.hive.blog/file/hiveimages/abc123.jpg">
         <small style="color: #999; margin-top: 5px; display: block;">URL to cover art image from Hive or other service</small>
@@ -229,6 +235,12 @@
           <option value="noise_sample">Noise Sample (Temporary)</option>
         </select>
         <small style="color: #999; margin-top: 5px; display: block;">Determines if this content gets distributed to multiple nodes</small>
+      </div>
+
+      <div class="form-group">
+        <label for="postPermlink">Blockchain Post Permlink (optional)</label>
+        <input type="text" id="postPermlink" placeholder="my-audio-snap-2026">
+        <small style="color: #999; margin-top: 5px; display: block;">Link to your blockchain post (e.g., Hive permlink) for comments/reactions</small>
       </div>
 
       <div class="progress" id="progress">
@@ -305,8 +317,17 @@
         formData.append('format', file.name.split('.').pop());
         formData.append('title', document.getElementById('title').value || file.name);
         formData.append('description', document.getElementById('description').value || '');
+        
+        // Parse tags (comma-separated)
+        const tagsInput = document.getElementById('tags').value;
+        if (tagsInput) {
+          const tagsArray = tagsInput.split(',').map(tag => tag.trim()).filter(tag => tag);
+          formData.append('tags', JSON.stringify(tagsArray));
+        }
+        
         formData.append('thumbnail_url', document.getElementById('thumbnail').value || '');
         formData.append('category', document.getElementById('category').value || 'voice_message');
+        formData.append('post_permlink', document.getElementById('postPermlink').value || '');
         formData.append('context_type', 'demo_upload');
 
         const response = await fetch('/api/audio/upload', {

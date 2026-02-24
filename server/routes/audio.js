@@ -21,6 +21,18 @@ const uploadLimiter = rateLimit({
 });
 
 /**
+ * GET /api/audio/feed - Get audio feed with filters
+ * Query params:
+ *   - limit: Items per page (default 20, max 100)
+ *   - offset: Pagination offset (default 0)
+ *   - sort: newest|oldest|plays|trending (default newest)
+ *   - tag: Filter by tag
+ *   - category: Filter by category
+ *   - owner: Filter by username
+ */
+router.get('/feed', audioController.getFeed);
+
+/**
  * GET /api/audio?a=<permlink> - Get audio metadata by permlink
  * GET /api/audio?cid=<cid> - Get audio metadata by CID
  */
@@ -51,6 +63,16 @@ router.post('/upload',
 router.patch('/:permlink/thumbnail',
   validateApiKey,
   audioController.updateThumbnail
+);
+
+/**
+ * PATCH /api/audio/:permlink/post-permlink - Update blockchain post permlink
+ * Requires: API key, X-User header
+ * Body: { post_permlink: "my-audio-snap-2026" }
+ */
+router.patch('/:permlink/post-permlink',
+  validateApiKey,
+  audioController.updatePostPermlink
 );
 
 module.exports = router;

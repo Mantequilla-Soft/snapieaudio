@@ -390,6 +390,12 @@
             <td>Audio description</td>
           </tr>
           <tr>
+            <td><code>tags</code></td>
+            <td>JSON Array</td>
+            <td>No</td>
+            <td>Array of tag strings for content discovery (e.g., ["music", "podcast"])</td>
+          </tr>
+          <tr>
             <td><code>codec</code></td>
             <td>String</td>
             <td>No</td>
@@ -430,6 +436,12 @@
             <td>String</td>
             <td>No</td>
             <td>Content type: voice_message (default), podcast, song, interview, audiobook, noise_sample</td>
+          </tr>
+          <tr>
+            <td><code>post_permlink</code></td>
+            <td>String</td>
+            <td>No</td>
+            <td>Blockchain post reference (e.g., Hive permlink) for linking comments/reactions (max 256 chars)</td>
           </tr>
         </tbody>
       </table>
@@ -504,11 +516,140 @@
   "audioUrl": "http://gateway.ipfs/ipfs/QmdMsEX...",
   "audioUrlFallback": "https://ipfs.io/ipfs/QmdMsEX...",
   "title": "My Audio",
+  "description": "This is an example audio recording",
+  "tags": ["music", "podcast", "interview"],
   "thumbnail_url": "https://files.hive.blog/file/hiveimages/abc123.jpg",
+  "post_permlink": "my-audio-snap-2026",
   "plays": 42,
   "likes": 5,
   "createdAt": "2025-11-27T01:22:17.053Z"
 }</code></pre>
+
+      <h3>Get Audio Feed</h3>
+
+      <div class="endpoint">
+        <span class="method method-get">GET</span>
+        <code>/api/audio/feed</code>
+      </div>
+
+      <p>Get a paginated feed of audio content with filtering and sorting options. Perfect for building frontends with discovery feeds, trending pages, tag browsing, and user profiles. No authentication required.</p>
+
+      <h4>Query Parameters</h4>
+      <table>
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Default</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>limit</code></td>
+            <td>Number</td>
+            <td>20</td>
+            <td>Items per page (max 100)</td>
+          </tr>
+          <tr>
+            <td><code>offset</code></td>
+            <td>Number</td>
+            <td>0</td>
+            <td>Pagination offset</td>
+          </tr>
+          <tr>
+            <td><code>sort</code></td>
+            <td>String</td>
+            <td>newest</td>
+            <td>Sort order: <code>newest</code>, <code>oldest</code>, <code>plays</code>, <code>trending</code></td>
+          </tr>
+          <tr>
+            <td><code>category</code></td>
+            <td>String</td>
+            <td>-</td>
+            <td>Filter by category: voice_message, podcast, song, interview, audiobook, noise_sample</td>
+          </tr>
+          <tr>
+            <td><code>tag</code></td>
+            <td>String</td>
+            <td>-</td>
+            <td>Filter by tag (e.g., "music", "podcast")</td>
+          </tr>
+          <tr>
+            <td><code>owner</code></td>
+            <td>String</td>
+            <td>-</td>
+            <td>Filter by username (user's audio only)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4>Example Requests</h4>
+      <pre><code># Latest audio (newest first)
+GET /api/audio/feed?limit=20&offset=0&sort=newest
+
+# Trending audio (most played)
+GET /api/audio/feed?sort=plays
+
+# All podcasts, sorted by newest
+GET /api/audio/feed?category=podcast&sort=newest
+
+# Audio tagged with "music"
+GET /api/audio/feed?tag=music&limit=50
+
+# User's audio profile
+GET /api/audio/feed?owner=meno&sort=newest
+
+# Paginated results (page 2)
+GET /api/audio/feed?limit=20&offset=20</code></pre>
+
+      <h4>Response</h4>
+      <pre><code>{
+  "items": [
+    {
+      "permlink": "abc123xy",
+      "owner": "meno",
+      "audio_cid": "QmdMsEX...",
+      "category": "podcast",
+      "duration": 1800,
+      "format": "mp3",
+      "title": "My Podcast Episode",
+      "description": "Episode description here",
+      "tags": ["podcast", "tech", "interview"],
+      "thumbnail_url": "https://files.hive.blog/.../cover.jpg",
+      "post_permlink": "my-podcast-ep1",
+      "plays": 152,
+      "likes": 23,
+      "createdAt": "2026-02-20T10:30:00Z",
+      "audioUrl": "https://ipfs.3speak.tv/ipfs/QmdMsEX...",
+      "audioUrlFallback": "https://ipfs.io/ipfs/QmdMsEX..."
+    },
+    // ... more items
+  ],
+  "pagination": {
+    "limit": 20,
+    "offset": 0,
+    "total": 156,
+    "hasMore": true
+  },
+  "filters": {
+    "sort": "newest",
+    "category": null,
+    "tag": null,
+    "owner": null
+  }
+}</code></pre>
+
+      <div class="note">
+        <strong>💡 Use Cases:</strong>
+        <ul style="margin-top: 10px;">
+          <li><strong>Home Feed:</strong> <code>?sort=newest&limit=20</code></li>
+          <li><strong>Trending Page:</strong> <code>?sort=plays&limit=50</code></li>
+          <li><strong>Tag Browser:</strong> <code>?tag=music&sort=plays</code></li>
+          <li><strong>User Profile:</strong> <code>?owner=username&sort=newest</code></li>
+          <li><strong>Category Page:</strong> <code>?category=podcast&sort=newest</code></li>
+        </ul>
+      </div>
 
       <h3>Update Thumbnail</h3>
 
@@ -541,6 +682,41 @@ X-User: meno
         <ul style="margin-top: 10px;">
           <li>URL must be valid (http:// or https://)</li>
           <li>Maximum length: 2048 characters</li>
+          <li>Only owner can update (validated via X-User header)</li>
+        </ul>
+      </div>
+
+      <h3>Update Blockchain Post Permlink</h3>
+
+      <div class="endpoint">
+        <span class="method method-post" style="background: #fd7e14;">PATCH</span>
+        <code>/api/audio/:permlink/post-permlink</code>
+      </div>
+
+      <p>Update the blockchain post permlink for an existing audio. <strong>Authentication required.</strong> Only the audio owner can update their post permlink.</p>
+
+      <h4>Request Body</h4>
+      <pre><code>PATCH /api/audio/w2ehm8pr/post-permlink
+Content-Type: application/json
+X-API-Key: sk_your_api_key
+X-User: meno
+
+{
+  "post_permlink": "my-audio-snap-2026"
+}</code></pre>
+
+      <h4>Response</h4>
+      <pre><code>{
+  "success": true,
+  "permlink": "w2ehm8pr",
+  "post_permlink": "my-audio-snap-2026"
+}</code></pre>
+
+      <div class="note">
+        <strong>Validation Rules:</strong>
+        <ul style="margin-top: 10px;">
+          <li>Must be alphanumeric with hyphens/underscores only</li>
+          <li>Maximum length: 256 characters</li>
           <li>Only owner can update (validated via X-User header)</li>
         </ul>
       </div>
@@ -579,6 +755,8 @@ async function uploadAudio(file) {
   formData.append('title', 'My Recording');
   formData.append('thumbnail_url', 'https://files.hive.blog/file/hiveimages/cover.jpg');
   formData.append('category', 'podcast');
+  formData.append('post_permlink', 'my-audio-snap-2026');
+  formData.append('tags', JSON.stringify(['music', 'podcast']));
 
   const response = await fetch('https://audio.3speak.tv/api/audio/upload', {
     method: 'POST',
@@ -598,6 +776,50 @@ async function getAudio(permlink) {
     `https://audio.3speak.tv/api/audio?a=${permlink}`
   );
   return await response.json();
+}
+
+// Get audio feed
+async function getFeed(options = {}) {
+  const {
+    limit = 20,
+    offset = 0,
+    sort = 'newest',
+    category,
+    tag,
+    owner
+  } = options;
+
+  const params = new URLSearchParams({
+    limit,
+    offset,
+    sort
+  });
+
+  if (category) params.append('category', category);
+  if (tag) params.append('tag', tag);
+  if (owner) params.append('owner', owner);
+
+  const response = await fetch(
+    `https://audio.3speak.tv/api/audio/feed?${params}`
+  );
+  return await response.json();
+}
+
+// Example: Get trending podcasts
+async function getTrendingPodcasts() {
+  return await getFeed({
+    category: 'podcast',
+    sort: 'plays',
+    limit: 50
+  });
+}
+
+// Example: Get user's audio
+async function getUserAudio(username) {
+  return await getFeed({
+    owner: username,
+    sort: 'newest'
+  });
 }
 
 // Track play
@@ -624,6 +846,23 @@ async function updateThumbnail(permlink, thumbnailUrl) {
     }
   );
   return await response.json();
+}
+
+// Update Post Permlink
+async function updatePostPermlink(permlink, postPermlink) {
+  const response = await fetch(
+    `https://audio.3speak.tv/api/audio/${permlink}/post-permlink`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': 'sk_your_api_key',
+        'X-User': 'username'
+      },
+      body: JSON.stringify({ post_permlink: postPermlink })
+    }
+  );
+  return await response.json();
 }</code></pre>
 
       <h3>cURL</h3>
@@ -636,10 +875,24 @@ curl -X POST https://audio.3speak.tv/api/audio/upload \
   -F "format=mp3" \
   -F "title=My Recording" \
   -F "thumbnail_url=https://files.hive.blog/file/hiveimages/cover.jpg" \
-  -F "category=podcast"
+  -F "category=podcast" \
+  -F "post_permlink=my-audio-snap-2026" \
+  -F "tags=[\"music\",\"podcast\"]"
 
 # Get metadata
 curl "https://audio.3speak.tv/api/audio?a=w2ehm8pr"
+
+# Get feed (latest audio)
+curl "https://audio.3speak.tv/api/audio/feed?limit=20&offset=0&sort=newest"
+
+# Get trending podcasts
+curl "https://audio.3speak.tv/api/audio/feed?category=podcast&sort=plays&limit=50"
+
+# Get audio tagged with 'music'
+curl "https://audio.3speak.tv/api/audio/feed?tag=music"
+
+# Get user's audio
+curl "https://audio.3speak.tv/api/audio/feed?owner=meno&sort=newest"
 
 # Track play
 curl -X POST https://audio.3speak.tv/api/audio/play \
@@ -651,7 +904,14 @@ curl -X PATCH https://audio.3speak.tv/api/audio/w2ehm8pr/thumbnail \
   -H "X-API-Key: sk_your_api_key" \
   -H "X-User: username" \
   -H "Content-Type: application/json" \
-  -d '{"thumbnail_url":"https://files.hive.blog/file/hiveimages/new.jpg"}'</code></pre>
+  -d '{"thumbnail_url":"https://files.hive.blog/file/hiveimages/new.jpg"}'
+
+# Update post permlink
+curl -X PATCH https://audio.3speak.tv/api/audio/w2ehm8pr/post-permlink \
+  -H "X-API-Key: sk_your_api_key" \
+  -H "X-User: username" \
+  -H "Content-Type: application/json" \
+  -d '{"post_permlink":"my-audio-snap-2026"}'</code></pre>
 
       <h3>Python</h3>
       <pre><code>import requests
@@ -665,7 +925,9 @@ def upload_audio(file_path, api_key):
             'format': 'mp3',
             'title': 'My Recording',
             'thumbnail_url': 'https://files.hive.blog/file/hiveimages/cover.jpg',
-            'category': 'podcast'
+            'category': 'podcast',
+            'post_permlink': 'my-audio-snap-2026',
+            'tags': '["music", "podcast"]'
         }
         headers = {
             'X-API-Key': api_key,
@@ -685,7 +947,36 @@ def get_audio(permlink):
     response = requests.get(
         f'https://audio.3speak.tv/api/audio?a={permlink}'
     )
-    return response.json()</code></pre>
+    return response.json()
+
+# Get feed with filters
+def get_feed(limit=20, offset=0, sort='newest', category=None, tag=None, owner=None):
+    params = {
+        'limit': limit,
+        'offset': offset,
+        'sort': sort
+    }
+    
+    if category:
+        params['category'] = category
+    if tag:
+        params['tag'] = tag
+    if owner:
+        params['owner'] = owner
+    
+    response = requests.get(
+        'https://audio.3speak.tv/api/audio/feed',
+        params=params
+    )
+    return response.json()
+
+# Example: Get trending podcasts
+def get_trending_podcasts():
+    return get_feed(category='podcast', sort='plays', limit=50)
+
+# Example: Get user's audio
+def get_user_audio(username):
+    return get_feed(owner=username, sort='newest')</code></pre>
 
       <h2 id="rate-limits">⏱️ Rate Limits</h2>
 
@@ -710,6 +1001,11 @@ def get_audio(permlink):
           </tr>
           <tr>
             <td>Metadata <code>/api/audio</code></td>
+            <td>Unlimited</td>
+            <td>-</td>
+          </tr>
+          <tr>
+            <td>Feed <code>/api/audio/feed</code></td>
             <td>Unlimited</td>
             <td>-</td>
           </tr>

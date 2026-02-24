@@ -121,6 +121,9 @@ class AudioMessage {
         audioUrlFallback: fallbackUrl,
         ipfs_status: audio.ipfs_status,
         title: audio.title,
+        description: audio.description,
+        tags: audio.tags || [],
+        post_permlink: audio.post_permlink || null,
         plays: audio.plays || 0,
         likes: audio.likes || 0,
         createdAt: audio.createdAt,
@@ -205,6 +208,7 @@ class AudioMessage {
         description: audioData.description || null,
         tags: audioData.tags || [],
         thumbnail_url: audioData.thumbnail_url || null,
+        post_permlink: audioData.post_permlink || null,  // Blockchain post reference
         
         // Context
         context_type: audioData.context_type || 'voice_message',
@@ -269,6 +273,34 @@ class AudioMessage {
       return result;
     } catch (error) {
       console.error('Error updating thumbnail:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update blockchain post permlink for audio
+   */
+  static async updatePostPermlink(permlink, username, post_permlink) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      // Only owner can update post_permlink
+      const result = await collection.findOneAndUpdate(
+        { permlink, owner: username, status: 'published' },
+        { 
+          $set: { 
+            post_permlink,
+            updatedAt: new Date()
+          }
+        },
+        { returnDocument: 'after' }
+      );
+
+      // Return the updated document (null if not found/authorized)
+      return result;
+    } catch (error) {
+      console.error('Error updating post_permlink:', error);
       throw error;
     }
   }

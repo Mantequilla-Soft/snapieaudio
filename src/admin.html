@@ -176,6 +176,36 @@
       color: #721c24;
     }
 
+    .badge-voice_message {
+      background: #e7f3ff;
+      color: #004085;
+    }
+
+    .badge-podcast {
+      background: #d1ecf1;
+      color: #0c5460;
+    }
+
+    .badge-song {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .badge-interview {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .badge-audiobook {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .badge-noise_sample {
+      background: #e2e3e5;
+      color: #383d41;
+    }
+
     .btn-small {
       padding: 6px 12px;
       font-size: 12px;
@@ -320,6 +350,16 @@
         <button class="filter-btn" onclick="filterFiles('demo')">Demo Only</button>
         <button class="filter-btn" onclick="filterFiles('pending')">Pending Migration</button>
         <button class="filter-btn" onclick="filterFiles('skip')">Skip Migration</button>
+        
+        <select id="categoryFilter" onchange="filterByCategory()" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd; margin-left: 10px;">
+          <option value="">All Categories</option>
+          <option value="voice_message">Voice Message</option>
+          <option value="podcast">Podcast</option>
+          <option value="song">Song</option>
+          <option value="interview">Interview</option>
+          <option value="audiobook">Audiobook</option>
+          <option value="noise_sample">Noise Sample</option>
+        </select>
       </div>
       <table>
         <thead>
@@ -328,6 +368,7 @@
             <th>Owner</th>
             <th>Title</th>
             <th>Thumbnail</th>
+            <th>Category</th>
             <th>Duration</th>
             <th>Size</th>
             <th>Status</th>
@@ -337,7 +378,7 @@
           </tr>
         </thead>
         <tbody id="filesTable">
-          <tr><td colspan="10" style="text-align: center; padding: 40px;">Loading...</td></tr>
+          <tr><td colspan="11" style="text-align: center; padding: 40px;">Loading...</td></tr>
         </tbody>
       </table>
     </div>
@@ -406,16 +447,21 @@
       }
     }
 
-    async function loadFiles(filter = 'all') {
+    async function loadFiles(filter = 'all', category = '') {
       try {
-        const response = await fetch(`${API_URL}/files?filter=${filter}`, {
+        let url = `${API_URL}/files?filter=${filter}`;
+        if (category) {
+          url += `&category=${category}`;
+        }
+        
+        const response = await fetch(url, {
           headers: { 'Authorization': `Bearer ${authToken}` }
         });
         const files = await response.json();
         
         const tbody = document.getElementById('filesTable');
         if (files.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 40px;">No files found</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 40px;">No files found</td></tr>';
           return;
         }
 
@@ -442,6 +488,7 @@
                 <span class="tooltip">${safeThumbnailUrl}</span>
               ` : '<div class="thumbnail-placeholder">No image</div>'}
             </td>
+            <td><span class="badge badge-${getCategoryBadgeClass(file.category)}">${file.category || 'voice_message'}</span></td>
             <td>${file.duration}s</td>
             <td>${formatBytes(file.size)}</td>
             <td><span class="badge badge-${getBadgeClass(file.migration_status)}">${file.migration_status}</span></td>
@@ -459,7 +506,16 @@
     function filterFiles(type) {
       document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
       event.target.classList.add('active');
-      loadFiles(type);
+      const category = document.getElementById('categoryFilter').value;
+      loadFiles(type, category);
+    }
+
+    function filterByCategory() {
+      const filter = document.querySelector('.filter-btn.active').textContent.toLowerCase().includes('demo') ? 'demo' : 
+                     document.querySelector('.filter-btn.active').textContent.toLowerCase().includes('pending') ? 'pending' :
+                     document.querySelector('.filter-btn.active').textContent.toLowerCase().includes('skip') ? 'skip' : 'all';
+      const category = document.getElementById('categoryFilter').value;
+      loadFiles(filter, category);
     }
 
     async function deleteFile(permlink) {
@@ -488,7 +544,10 @@
       if (status === 'pending') return 'demo';
       return 'normal';
     }
-
+    function getCategoryBadgeClass(category) {
+      const cat = category || 'voice_message';
+      return cat; // Badge class matches category name
+    }
     function formatBytes(bytes) {
       if (bytes === 0) return '0 B';
       const k = 1024;
