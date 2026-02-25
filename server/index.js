@@ -91,9 +91,9 @@ async function startServer() {
     
     // Check local storage capacity
     const stats = await ipfs.repo.stat();
-    const repoSizeGB = (stats.repoSize / (1024 ** 3)).toFixed(2);
-    const storageMaxGB = (stats.storageMax / (1024 ** 3)).toFixed(2);
-    const availableGB = ((stats.storageMax - stats.repoSize) / (1024 ** 3)).toFixed(2);
+    const repoSizeGB = (Number(stats.repoSize) / (1024 ** 3)).toFixed(2);
+    const storageMaxGB = (Number(stats.storageMax) / (1024 ** 3)).toFixed(2);
+    const availableGB = ((Number(stats.storageMax) - Number(stats.repoSize)) / (1024 ** 3)).toFixed(2);
     
     console.log(`✓ IPFS repo: ${repoSizeGB}GB / ${storageMaxGB}GB (${availableGB}GB available)`);
     

@@ -225,8 +225,8 @@ exports.uploadAudio = async (req, res) => {
       // Migration logic: only migrate valuable content (songs, podcasts, interviews)
       // Voice messages and demo uploads are never migrated
       migration_status: isDemoUpload ? 'skip' : 
-        (['song', 'podcast', 'interview'].includes(category || 'voice_message') ? 'pending' : 'skip'),
-      migration_queued_at: (!isDemoUpload && ['song', 'podcast', 'interview'].includes(category || 'voice_message')) 
+        (['song', 'podcast', 'interview'].includes(category) ? 'pending' : 'skip'),
+      migration_queued_at: (!isDemoUpload && ['song', 'podcast', 'interview'].includes(category)) 
         ? new Date() : null,
       pin_until: isDemoUpload ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null
     };

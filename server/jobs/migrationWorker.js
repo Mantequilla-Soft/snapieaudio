@@ -6,7 +6,50 @@
  */
 
 const AudioMessage = require('../models/AudioMessage');
-const axios = require('axios');
+const https = require('https');
+const http = require('http');
+const { URL } = require('url');
+
+/**
+ * Simple POST request helper using Node's built-in http/https
+ * Replacement for axios to avoid dependency
+ */
+function httpPost(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const urlObj = new URL(url);
+    const protocol = urlObj.protocol === 'https:' ? https : http;
+    const timeout = options.timeout || 10000;
+    
+    const req = protocol.request({
+      hostname: urlObj.hostname,
+      port: urlObj.port,
+      path: urlObj.pathname + urlObj.search,
+      method: 'POST',
+      headers: options.headers || { 'Content-Length': '0' },
+      timeout
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const jsonData = data ? JSON.parse(data) : {};
+          resolve({ status: res.statusCode, data: jsonData });
+        } catch (e) {
+          resolve({ status: res.statusCode, data });
+        }
+      });
+    });
+    
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      const err = new Error('Request timeout');
+      err.code = 'ECONNABORTED';
+      reject(err);
+    });
+    req.end();
+  });
+}
 
 class MigrationWorker {
   constructor() {
@@ -209,9 +252,8 @@ class MigrationWorker {
   async verifyLocalCID(cid) {
     try {
       const localApiUrl = process.env.IPFS_API_URL || 'http://127.0.0.1:5001';
-      const response = await axios.post(
+      const response = await httpPost(
         `${localApiUrl}/api/v0/object/stat?arg=${cid}`,
-        null,
         { 
           timeout: 5000,
           headers: { 'Content-Length': '0' }
@@ -229,9 +271,8 @@ class MigrationWorker {
    */
   async pinToSupernode(cid) {
     try {
-      const response = await axios.post(
+      const response = await httpPost(
         `${this.supernodeUrl}/api/v0/pin/add?arg=${cid}&progress=false`,
-        null,
         {
           timeout: 60000, // 60s timeout for large files
           headers: { 'Content-Length': '0' }
@@ -259,9 +300,8 @@ class MigrationWorker {
    */
   async verifySuperNodePin(cid) {
     try {
-      const response = await axios.post(
+      const response = await httpPost(
         `${this.supernodeUrl}/api/v0/pin/ls?arg=${cid}`,
-        null,
         {
           timeout: 10000,
           headers: { 'Content-Length': '0' }
