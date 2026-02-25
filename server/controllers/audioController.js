@@ -138,7 +138,41 @@ exports.uploadAudio = async (req, res) => {
     });
 
     const audio_cid = cid.toString();
-    console.log(`✓ File pinned to IPFS: ${audio_cid}`);
+    console.log(`✓ File added to IPFS: ${audio_cid}`);
+
+    // Verify pin succeeded (prevents database/IPFS mismatch)
+    // Try up to 3 times with 1s delay (handles timing issues)
+    let verified = false;
+    let lastError = null;
+    
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const pins = await ipfs.pin.ls({ paths: [cid] });
+        for await (const pin of pins) {
+          if (pin.cid.toString() === audio_cid) {
+            verified = true;
+            break;
+          }
+        }
+        if (verified) {
+          console.log(`✓ Pin verified: ${audio_cid} (attempt ${attempt})`);
+          break;
+        }
+      } catch (error) {
+        lastError = error;
+        console.warn(`Pin verification attempt ${attempt} failed:`, error.message);
+      }
+      
+      // Wait 1s before retrying (unless verified or last attempt)
+      if (!verified && attempt < 3) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+    
+    if (!verified) {
+      console.error('Pin verification failed after 3 attempts:', lastError);
+      throw new Error(`Failed to verify IPFS pin: ${lastError?.message || 'CID not in pin list'}`);
+    }
 
     // Parse waveform if provided as JSON string
     let waveformData = null;
@@ -188,8 +222,12 @@ exports.uploadAudio = async (req, res) => {
       context_id: context_id || null,
       reply_to: reply_to || null,
       api_key_used: req.apiKeyId || null,
-      // Demo uploads: never migrate, expire after 24 hours
-      migration_status: isDemoUpload ? 'skip' : 'pending',
+      // Migration logic: only migrate valuable content (songs, podcasts, interviews)
+      // Voice messages and demo uploads are never migrated
+      migration_status: isDemoUpload ? 'skip' : 
+        (['song', 'podcast', 'interview'].includes(category || 'voice_message') ? 'pending' : 'skip'),
+      migration_queued_at: (!isDemoUpload && ['song', 'podcast', 'interview'].includes(category || 'voice_message')) 
+        ? new Date() : null,
       pin_until: isDemoUpload ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null
     };
 
@@ -211,6 +249,29 @@ exports.uploadAudio = async (req, res) => {
     });
   } catch (error) {
     console.error('Error uploading audio:', error);
+    
+    // Specific error handling for IPFS issues
+    if (error.code === 'ECONNREFUSED') {
+      return res.status(503).json({ 
+        error: 'IPFS storage unavailable',
+        message: 'Storage service is temporarily offline. Please try again later.'
+      });
+    }
+    
+    if (error.message && error.message.includes('no space left')) {
+      return res.status(507).json({ 
+        error: 'Storage full',
+        message: 'Storage capacity reached. Please contact support.'
+      });
+    }
+    
+    if (error.message && error.message.includes('Pin verification failed')) {
+      return res.status(500).json({ 
+        error: 'Pin verification failed',
+        message: 'File uploaded but could not be verified. Please try again or contact support.'
+      });
+    }
+    
     res.status(500).json({ 
       error: 'Failed to upload audio',
       message: error.message 

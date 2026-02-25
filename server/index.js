@@ -69,9 +69,68 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🎵 SnapieAudioPlayer server running on http://localhost:${PORT}`);
-  console.log(`📺 Player available at: http://localhost:${PORT}/play?a=<permlink>`);
-});
+// IPFS Health Check & Migration Worker Startup
+async function startServer() {
+  // Start Express server first (always available)
+  app.listen(PORT, () => {
+    console.log(`🎵 SnapieAudioPlayer server running on http://localhost:${PORT}`);
+    console.log(`📺 Player available at: http://localhost:${PORT}/play?a=<permlink>`);
+  });
+  
+  // Then check IPFS health (non-blocking)
+  try {
+    console.log('🔍 Checking IPFS daemon health...');
+    
+    // Check local IPFS daemon
+    const { create } = await import('ipfs-http-client');
+    const ipfs = create({ url: process.env.IPFS_API_URL || 'http://127.0.0.1:5001' });
+    
+    // Verify daemon is responsive
+    const id = await ipfs.id();
+    console.log(`✓ IPFS daemon connected: ${id.id}`);
+    
+    // Check local storage capacity
+    const stats = await ipfs.repo.stat();
+    const repoSizeGB = (stats.repoSize / (1024 ** 3)).toFixed(2);
+    const storageMaxGB = (stats.storageMax / (1024 ** 3)).toFixed(2);
+    const availableGB = ((stats.storageMax - stats.repoSize) / (1024 ** 3)).toFixed(2);
+    
+    console.log(`✓ IPFS repo: ${repoSizeGB}GB / ${storageMaxGB}GB (${availableGB}GB available)`);
+    
+    // Warn if storage low (but don't exit)
+    const minHeadroomGB = 5;
+    if (parseFloat(availableGB) < minHeadroomGB) {
+      console.warn(`⚠️  WARNING: IPFS storage low (${availableGB}GB < ${minHeadroomGB}GB recommended)`);
+      console.warn('   Uploads may fail. Consider increasing StorageMax.');
+    }
+    
+    // Start migration worker in production (non-blocking)
+    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_MIGRATIONS !== 'false') {
+      try {
+        console.log('🔄 Starting migration worker...');
+        const migrationWorker = require('./jobs/migrationWorker');
+        migrationWorker.start();
+      } catch (error) {
+        console.error('⚠️  Migration worker failed to start:', error.message);
+        console.error('   Server will continue without automatic migrations.');
+      }
+    } else {
+      console.log('⏸️  Migration worker disabled (dev mode or ENABLE_MIGRATIONS=false)');
+    }
+    
+  } catch (error) {
+    console.error('⚠️  IPFS health check failed:', error.message);
+    
+    if (error.code === 'ECONNREFUSED') {
+      console.error('   IPFS daemon not running at', process.env.IPFS_API_URL || 'http://127.0.0.1:5001');
+      console.error('   Uploads will fail until IPFS is started: systemctl start ipfs');
+    }
+    
+    console.error('⚠️  Server running WITHOUT IPFS - uploads will fail!');
+  }
+}
+
+// Start server with health checks
+startServer();
 
 module.exports = app;

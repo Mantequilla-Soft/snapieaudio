@@ -343,6 +343,43 @@
       </div>
     </div>
 
+    <!-- Migration Control Section -->
+    <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+      <h2 style="margin-top: 0;">🔄 IPFS Migration & Backup</h2>
+      <p style="color: #666; margin-bottom: 15px;">
+        Automatic daily backup of valuable content (songs, podcasts, interviews) to 3speak supernode at 2:00 AM.<br>
+        Voice messages remain local only (ephemeral content).
+      </p>
+      
+      <div style="display: flex; gap: 15px; align-items: center; margin-bottom: 15px;">
+        <div style="flex: 1;">
+          <strong>Next scheduled run:</strong> <span id="nextMigrationTime">Loading...</span>
+        </div>
+        <button class="btn" onclick="triggerMigrationNow()" id="triggerMigrationBtn">
+          ⚡ Trigger Migration Now
+        </button>
+      </div>
+      
+      <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
+        <div class="stat-card" style="background: #fff3cd;">
+          <div class="stat-value" id="migrationPending">--</div>
+          <div class="stat-label">⏳ Queued</div>
+        </div>
+        <div class="stat-card" style="background: #d1e7dd;">
+          <div class="stat-value" id="migrationMigrated">--</div>
+          <div class="stat-label">✓ Backed Up</div>
+        </div>
+        <div class="stat-card" style="background: #f8d7da;">
+          <div class="stat-value" id="migrationFailed">--</div>
+          <div class="stat-label">✗ Failed</div>
+        </div>
+        <div class="stat-card" style="background: #e2e3e5;">
+          <div class="stat-value" id="migrationSkipped">--</div>
+          <div class="stat-label">⊘ Local Only</div>
+        </div>
+      </div>
+    </div>
+
     <div class="table-container">
       <h2>Recent Uploads</h2>
       <div class="filters">
@@ -424,6 +461,11 @@
       document.getElementById('adminContainer').style.display = 'block';
       await loadStats();
       await loadFiles();
+      
+      // Auto-refresh migration stats every 60 seconds
+      setInterval(() => {
+        loadMigrationStats().catch(err => console.error('Auto-refresh failed:', err));
+      }, 60000);
     }
 
     function logout() {
@@ -442,6 +484,9 @@
         document.getElementById('totalSize').textContent = formatBytes(data.totalSize || 0);
         document.getElementById('demoFiles').textContent = data.demoFiles || 0;
         document.getElementById('pendingMigration').textContent = data.pendingMigration || 0;
+        
+        // Also load migration stats
+        await loadMigrationStats();
       } catch (err) {
         console.error('Failed to load stats:', err);
       }
@@ -491,10 +536,13 @@
             <td><span class="badge badge-${getCategoryBadgeClass(file.category)}">${file.category || 'voice_message'}</span></td>
             <td>${file.duration}s</td>
             <td>${formatBytes(file.size)}</td>
-            <td><span class="badge badge-${getBadgeClass(file.migration_status)}">${file.migration_status}</span></td>
+            <td><span class="badge badge-${getBadgeClass(file.migration_status)}">${getMigrationStatusLabel(file.migration_status)}</span></td>
             <td>${new Date(file.createdAt).toLocaleDateString()}</td>
             <td>${file.pin_until ? new Date(file.pin_until).toLocaleDateString() : '-'}</td>
-            <td><button class="btn-small" onclick="deleteFile('${file.permlink}')">Delete</button></td>
+            <td>
+              ${getMigrationButton(file)}
+              <button class="btn-small" onclick="deleteFile('${file.permlink}')" style="margin-left: 5px;">Delete</button>
+            </td>
           </tr>
         `;
         }).join('');
@@ -536,6 +584,195 @@
         }
       } catch (err) {
         alert('Error deleting file');
+      }
+    }
+
+    function getBadgeClass(status) {
+      if (status === 'skip') return 'skip';
+      if (status === 'pending') return 'demo';
+      if (status === 'failed') return 'demo'; // Use red styling
+      if (status === 'migrated') return 'normal';
+      return 'normal';
+    }
+    
+    function getCategoryBadgeClass(category) {
+      const cat = category || 'voice_message';
+      return cat; // Badge class matches category name
+    }
+    
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    /**
+     * Get human-readable migration status label
+     */
+    function getMigrationStatusLabel(status) {
+      const labels = {
+        'pending': '⏳ Queued',
+        'migrated': '✓ Backed Up',
+        'failed': '✗ Failed',
+        'skip': '🔵 Local Only'
+      };
+      return labels[status] || status;
+    }
+
+    /**
+     * Generate migration button HTML based on file status
+     */
+    function getMigrationButton(file) {
+      // Don't show migration button for:
+      // - Already migrated files
+      // - Voice messages (never migrate)
+      // - Demo files (skip)
+      if (file.migration_status === 'migrated') {
+        return ''; // Already done
+      }
+      
+      if (file.category === 'voice_message' || file.migration_status === 'skip') {
+        return ''; // Not applicable
+      }
+      
+      // Show migrate button for valuable content (songs, podcasts, interviews)
+      const isValuable = ['song', 'podcast', 'interview'].includes(file.category);
+      if (isValuable) {
+        return `<button class="btn-small" onclick="migrateFile('${file.permlink}')" 
+                  style="background: #0066cc; color: white;" 
+                  id="migrate-${file.permlink}">Migrate Now</button>`;
+      }
+      
+      return '';
+    }
+
+    /**
+     * Load migration statistics
+     */
+    async function loadMigrationStats() {
+      try {
+        const [stats, schedule] = await Promise.all([
+          fetch(`${API_URL}/migrations/stats`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+          }).then(r => r.json()),
+          fetch(`${API_URL}/migrations/schedule`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+          }).then(r => r.json())
+        ]);
+        
+        // Update stats
+        document.getElementById('migrationPending').textContent = stats.pending || 0;
+        document.getElementById('migrationMigrated').textContent = stats.migrated || 0;
+        document.getElementById('migrationFailed').textContent = stats.failed || 0;
+        document.getElementById('migrationSkipped').textContent = stats.skipped || 0;
+        
+        // Update next run time
+        if (schedule.enabled && schedule.nextRun) {
+          const nextRun = new Date(schedule.nextRun);
+          const now = new Date();
+          const msUntil = nextRun - now;
+          const hours = Math.floor(msUntil / (1000 * 60 * 60));
+          const minutes = Math.floor((msUntil % (1000 * 60 * 60)) / (1000 * 60));
+          
+          document.getElementById('nextMigrationTime').textContent = 
+            `${nextRun.toLocaleString()} (in ${hours}h ${minutes}m)`;
+          
+          if (schedule.isRunning) {
+            document.getElementById('nextMigrationTime').textContent = '🔄 Running now...';
+          }
+        } else {
+          document.getElementById('nextMigrationTime').textContent = 'Disabled';
+        }
+      } catch (err) {
+        console.error('Failed to load migration stats:', err);
+      }
+    }
+
+    /**
+     * Trigger migration job immediately
+     */
+    async function triggerMigrationNow() {
+      const btn = document.getElementById('triggerMigrationBtn');
+      const originalText = btn.textContent;
+      
+      if (!confirm('Trigger migration job now? This will process up to 50 pending files.')) {
+        return;
+      }
+      
+      try {
+        btn.textContent = '⏳ Running...';
+        btn.disabled = true;
+        
+        const response = await fetch(`${API_URL}/migrations/trigger`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          alert(`Migration completed!\nProcessed: ${data.stats.processed}\nSucceeded: ${data.stats.succeeded}\nFailed: ${data.stats.failed}`);
+          await loadStats();
+          await loadFiles();
+        } else {
+          alert(`Failed: ${data.error || 'Unknown error'}`);
+        }
+      } catch (err) {
+        console.error('Migration trigger failed:', err);
+        alert('Failed to trigger migration');
+      } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    /**
+     * Migrate a specific file immediately
+     */
+    async function migrateFile(permlink) {
+      const btn = document.getElementById(`migrate-${permlink}`);
+      const originalText = btn.textContent;
+      
+      try {
+        btn.textContent = '⏳...';
+        btn.disabled = true;
+        
+        const response = await fetch(`${API_URL}/migrations/${permlink}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          btn.textContent = '✓ Done';
+          btn.style.background = '#28a745';
+          setTimeout(() => {
+            loadFiles(); // Refresh table
+            loadStats(); // Refresh stats
+          }, 1000);
+        } else {
+          btn.textContent = '✗ Failed';
+          btn.style.background = '#dc3545';
+          alert(`Migration failed: ${data.message || data.error}`);
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = '#0066cc';
+            btn.disabled = false;
+          }, 2000);
+        }
+      } catch (err) {
+        console.error('Migration failed:', err);
+        btn.textContent = '✗ Error';
+        btn.style.background = '#dc3545';
+        alert('Migration request failed');
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.background = '#0066cc';
+          btn.disabled = false;
+        }, 2000);
       }
     }
 

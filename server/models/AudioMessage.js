@@ -88,21 +88,31 @@ class AudioMessage {
       
       if (!audio) return null;
 
-      // Determine gateway priority based on IPFS status
-      const localGateway = process.env.IPFS_LOCAL_GATEWAY;
-      const publicGateway = process.env.IPFS_PRIMARY_GATEWAY;
-      const fallbackGateway = process.env.IPFS_FALLBACK_GATEWAY_1;
+      // Determine gateway priority based on IPFS status and migration
+      // ipfs-audio.3speak.tv = local VPS gateway
+      // ipfs.3speak.tv = supernode (backup/migration target)
+      const localGateway = process.env.IPFS_PRIMARY_GATEWAY; // ipfs-audio.3speak.tv
+      const supernodeGateway = process.env.IPFS_SUPERNODE_URL || 'https://ipfs.3speak.tv';
+      const fallbackGateway1 = process.env.IPFS_FALLBACK_GATEWAY_1; // ipfs.io
+      const fallbackGateway2 = process.env.IPFS_FALLBACK_GATEWAY_2; // dweb.link
       
       let primaryUrl, fallbackUrl;
       
-      if (audio.ipfs_status === 'pinned_local' && localGateway) {
-        // Try local gateway first for recently pinned files
+      if (audio.ipfs_status === 'pinned_distributed' || audio.migration_status === 'migrated') {
+        // Migrated content: prioritize supernode (most reliable, backed up)
+        primaryUrl = `${supernodeGateway}/ipfs/${audio.audio_cid}`;
+        fallbackUrl = `${localGateway}/ipfs/${audio.audio_cid}`;
+      } else if (audio.ipfs_status === 'pinned_local') {
+        // Local-only content: use local VPS gateway
+        // For valuable content awaiting migration, supernode is backup in case migration completed
+        // For voice messages, they're only on local node
+        const isValuableContent = ['song', 'podcast', 'interview'].includes(audio.category);
         primaryUrl = `${localGateway}/ipfs/${audio.audio_cid}`;
-        fallbackUrl = `${publicGateway}/ipfs/${audio.audio_cid}`;
+        fallbackUrl = isValuableContent ? `${supernodeGateway}/ipfs/${audio.audio_cid}` : `${fallbackGateway1}/ipfs/${audio.audio_cid}`;
       } else {
-        // Use public gateways for migrated content
-        primaryUrl = `${publicGateway}/ipfs/${audio.audio_cid}`;
-        fallbackUrl = `${fallbackGateway}/ipfs/${audio.audio_cid}`;
+        // Unknown status: try supernode first, then local, then public
+        primaryUrl = `${supernodeGateway}/ipfs/${audio.audio_cid}`;
+        fallbackUrl = `${fallbackGateway1}/ipfs/${audio.audio_cid}`;
       }
 
       // Return normalized response
@@ -301,6 +311,181 @@ class AudioMessage {
       return result;
     } catch (error) {
       console.error('Error updating post_permlink:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Find files pending migration (only valuable content: songs, podcasts, interviews)
+   */
+  static async findPendingMigrations(limit = 50) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      const now = new Date();
+
+      return await collection.find({
+        migration_status: 'pending',
+        migration_queued_at: { $lte: now },
+        status: 'published',
+        category: { $in: ['song', 'podcast', 'interview'] }
+      })
+        .sort({ migration_queued_at: 1 })
+        .limit(limit)
+        .toArray();
+    } catch (error) {
+      console.error('Error finding pending migrations:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark file as successfully migrated to supernode
+   */
+  static async markMigrated(permlink, nodes) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      await collection.updateOne(
+        { permlink },
+        {
+          $set: {
+            migration_status: 'migrated',
+            migration_completed_at: new Date(),
+            ipfs_status: 'pinned_distributed',
+            pinned_nodes: nodes,
+            migration_retries: 0,
+            migration_last_error: null,
+            updatedAt: new Date()
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Error marking migrated:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark file as failed to migrate (with retry logic)
+   */
+  static async markMigrationFailed(permlink, errorMessage, permanent = false) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      const update = {
+        $set: {
+          migration_status: permanent ? 'failed' : 'pending',
+          migration_last_error: errorMessage,
+          migration_queued_at: new Date(
+            Date.now() + (24 * 60 * 60 * 1000) // Retry in 24 hours
+          ),
+          updatedAt: new Date()
+        },
+        $inc: { migration_retries: 1 }
+      };
+
+      await collection.updateOne({ permlink }, update);
+    } catch (error) {
+      console.error('Error marking migration failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get migration statistics for admin dashboard
+   */
+  static async getMigrationStats() {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      const stats = await collection.aggregate([
+        {
+          $group: {
+            _id: {
+              status: '$migration_status',
+              category: '$category'
+            },
+            count: { $sum: 1 }
+          }
+        }
+      ]).toArray();
+
+      // Format results
+      const result = {
+        total: 0,
+        pending: 0,
+        migrated: 0,
+        failed: 0,
+        skipped: 0,
+        byCategory: {}
+      };
+
+      stats.forEach(stat => {
+        const status = stat._id.status || 'unknown';
+        const category = stat._id.category || 'unknown';
+        const count = stat.count;
+
+        result.total += count;
+        result[status] = (result[status] || 0) + count;
+
+        if (!result.byCategory[category]) {
+          result.byCategory[category] = {};
+        }
+        result.byCategory[category][status] = count;
+      });
+
+      return result;
+    } catch (error) {
+      console.error('Error getting migration stats:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get single audio by permlink (for manual migration)
+   */
+  static async getByPermlink(permlink) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      return await collection.findOne({ 
+        permlink,
+        status: 'published'
+      });
+    } catch (error) {
+      console.error('Error getting audio by permlink:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Retry a failed migration (resets retries and queues immediately)
+   */
+  static async retryMigration(permlink) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      await collection.updateOne(
+        { permlink },
+        {
+          $set: {
+            migration_status: 'pending',
+            migration_queued_at: new Date(), // Queue immediately
+            migration_retries: 0,
+            migration_last_error: null,
+            updatedAt: new Date()
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Error retrying migration:', error);
       throw error;
     }
   }

@@ -75,4 +75,72 @@ router.patch('/:permlink/post-permlink',
   audioController.updatePostPermlink
 );
 
+/**
+ * GET /api/health/ipfs - IPFS daemon health and storage status
+ * Public endpoint for monitoring
+ */
+router.get('/health/ipfs', async (req, res) => {
+  try {
+    const { create } = await import('ipfs-http-client');
+    const ipfs = create({ url: process.env.IPFS_API_URL || 'http://127.0.0.1:5001' });
+    
+    // Get daemon info
+    const [id, stats, version] = await Promise.all([
+      ipfs.id(),
+      ipfs.repo.stat(),
+      ipfs.version()
+    ]);
+    
+    // Get migration queue size
+    const AudioMessage = require('../models/AudioMessage');
+    const pending = await AudioMessage.findPendingMigrations(1000);
+    
+    // Get next migration time
+    let nextMigration = null;
+    let migrationEnabled = false;
+    try {
+      const migrationWorker = require('../jobs/migrationWorker');
+      nextMigration = migrationWorker.getNextRun();
+      migrationEnabled = process.env.ENABLE_MIGRATIONS !== 'false';
+    } catch (e) {
+      // Migration worker not started
+    }
+    
+    // Calculate storage
+    const repoSizeGB = parseFloat((stats.repoSize / (1024 ** 3)).toFixed(2));
+    const storageMaxGB = parseFloat((stats.storageMax / (1024 ** 3)).toFixed(2));
+    const availableGB = parseFloat(((stats.storageMax - stats.repoSize) / (1024 ** 3)).toFixed(2));
+    const usagePercent = parseFloat(((stats.repoSize / stats.storageMax) * 100).toFixed(1));
+    
+    res.json({
+      status: 'healthy',
+      ipfs: {
+        version: version.version,
+        peerId: id.id,
+        addresses: id.addresses
+      },
+      storage: {
+        repoSizeGB,
+        storageMaxGB,
+        availableGB,
+        usagePercent,
+        numObjects: stats.numObjects
+      },
+      migration: {
+        enabled: migrationEnabled,
+        queueSize: pending.length,
+        nextRun: nextMigration ? nextMigration.toISOString() : null
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('IPFS health check failed:', error);
+    res.status(503).json({ 
+      status: 'unhealthy',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 module.exports = router;
