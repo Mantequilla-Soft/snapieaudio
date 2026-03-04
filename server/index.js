@@ -9,10 +9,13 @@ const adminRoutes = require('./routes/admin');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Body parser size limit (match multer upload size)
+const MAX_BODY_SIZE = process.env.UPLOAD_MAX_FILE_SIZE || '50mb';
+
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: MAX_BODY_SIZE }));
+app.use(express.urlencoded({ extended: true, limit: MAX_BODY_SIZE }));
 
 // Serve static files
 app.use('/js', express.static(path.join(__dirname, '../src')));
