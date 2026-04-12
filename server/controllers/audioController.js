@@ -280,6 +280,32 @@ exports.uploadAudio = async (req, res) => {
 };
 
 /**
+ * Save waveform peaks for fast future loading (self-healing enrichment).
+ * Called by the player after first decode — no auth required.
+ */
+exports.updateWaveform = async (req, res) => {
+  try {
+    const { permlink } = req.params;
+    const { waveform, duration } = req.body;
+
+    if (!permlink || !waveform || !duration) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (!Array.isArray(waveform) || !waveform.every(Array.isArray)) {
+      return res.status(400).json({ error: 'Invalid waveform format' });
+    }
+
+    await AudioMessage.updateWaveform(permlink, waveform, parseFloat(duration));
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving waveform:', error);
+    res.status(500).json({ error: 'Failed to save waveform' });
+  }
+};
+
+/**
  * Update thumbnail URL for existing audio
  */
 exports.updateThumbnail = async (req, res) => {

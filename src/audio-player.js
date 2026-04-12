@@ -11,6 +11,7 @@ class SnapieAudioPlayer {
     this.speeds = [1, 1.5, 2];
     this.speedIndex = 0;
     this.mode = 'full'; // 'minimal', 'compact', 'full'
+    this.peaksProvided = false; // tracks whether waveform was pre-loaded from DB
     
     this.detectMode();
     this.initializePlayer();
@@ -128,15 +129,30 @@ class SnapieAudioPlayer {
    */
   async loadByPermlink(permlink) {
     const response = await fetch(`/api/audio?a=${permlink}`);
-    
+
     if (!response.ok) {
       throw new Error('Audio not found');
     }
 
     this.audioData = await response.json();
-    await this.loadAudioFile(this.audioData.audioUrl, this.audioData.audioUrlFallback);
-    
-    document.getElementById('audio-title').textContent = 
+
+    const gateways = [this.audioData.audioUrl, this.audioData.audioUrlFallback];
+
+    // Self-healing: if valid waveform peaks are stored, use them for instant render + streaming.
+    // Guard the format: WaveSurfer v7 requires number[][] (array of channel arrays), not a flat array.
+    const storedPeaks = this.audioData.waveform;
+    const validPeaks = Array.isArray(storedPeaks) &&
+                       storedPeaks.length > 0 &&
+                       Array.isArray(storedPeaks[0]);
+
+    if (validPeaks && this.audioData.duration) {
+      this.peaksProvided = true;
+      await this.loadAudioFileWithGateways(gateways, storedPeaks, this.audioData.duration);
+    } else {
+      await this.loadAudioFileWithGateways(gateways);
+    }
+
+    document.getElementById('audio-title').textContent =
       this.audioData.title || 'Voice Message';
   }
 
@@ -161,34 +177,31 @@ class SnapieAudioPlayer {
   }
 
   /**
-   * Load audio file with multiple gateway fallbacks
+   * Load audio file with multiple gateway fallbacks.
+   * When peaks + duration are provided, WaveSurfer renders the waveform instantly
+   * from stored data and streams the audio rather than downloading it fully first.
    */
-  async loadAudioFileWithGateways(gateways) {
+  async loadAudioFileWithGateways(gateways, peaks = null, duration = null) {
     let lastError = null;
-    
+
     for (let i = 0; i < gateways.length; i++) {
       try {
         console.log(`Trying gateway ${i + 1}/${gateways.length}: ${gateways[i]}`);
-        await this.wavesurfer.load(gateways[i]);
+        if (peaks && duration) {
+          await this.wavesurfer.load(gateways[i], peaks, duration);
+        } else {
+          await this.wavesurfer.load(gateways[i]);
+        }
         console.log(`✓ Successfully loaded from gateway ${i + 1}`);
-        return; // Success!
+        return;
       } catch (error) {
         lastError = error;
         console.warn(`✗ Gateway ${i + 1} failed:`, error.message);
-        // Continue to next gateway
       }
     }
-    
-    // All gateways failed
+
     console.error('All IPFS gateways failed', lastError);
     throw new Error('Unable to load audio from IPFS. The file may not be available on the network yet.');
-  }
-
-  /**
-   * Load audio file with fallback support (for database mode)
-   */
-  async loadAudioFile(primaryUrl, fallbackUrl) {
-    await this.loadAudioFileWithGateways([primaryUrl, fallbackUrl]);
   }
 
   /**
@@ -197,10 +210,37 @@ class SnapieAudioPlayer {
   onAudioReady() {
     this.showLoading(false);
     this.updateTimeDisplay();
-    
-    // Track play count if permlink exists
+
     if (this.audioData && this.audioData.permlink) {
       this.trackPlay(this.audioData.permlink);
+
+      // Self-healing: on first load (no stored peaks), save them for next time
+      if (!this.peaksProvided) {
+        this.saveWaveformPeaks(this.audioData.permlink);
+      }
+    }
+  }
+
+  /**
+   * Extract waveform peaks from the decoded audio and store them in the DB.
+   * Fires silently after first load — next load will be instant.
+   */
+  async saveWaveformPeaks(permlink) {
+    try {
+      const peaks = this.wavesurfer.exportPeaks({ channels: 1, maxLength: 800, precision: 5 });
+      const duration = this.wavesurfer.getDuration();
+
+      if (!peaks || !peaks.length || !duration) return;
+
+      await fetch(`/api/audio/${permlink}/waveform`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ waveform: peaks, duration })
+      });
+
+      console.log('✓ Waveform peaks saved — next load will be instant');
+    } catch (error) {
+      console.warn('Could not save waveform peaks:', error);
     }
   }
 

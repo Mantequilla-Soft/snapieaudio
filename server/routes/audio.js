@@ -56,6 +56,13 @@ router.post('/upload',
 );
 
 /**
+ * PATCH /api/audio/:permlink/waveform - Store waveform peaks (self-healing enrichment)
+ * No auth required — player calls this after first decode to speed up future loads.
+ * Body: { waveform: [[...peaks]], duration: 123.4 }
+ */
+router.patch('/:permlink/waveform', playLimiter, audioController.updateWaveform);
+
+/**
  * PATCH /api/audio/:permlink/thumbnail - Update thumbnail URL
  * Requires: API key, X-User header
  * Body: { thumbnail_url: "https://..." }

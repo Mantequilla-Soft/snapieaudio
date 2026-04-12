@@ -260,6 +260,31 @@ class AudioMessage {
   }
 
   /**
+   * Store waveform peaks for fast loading.
+   * Only writes if waveform is not already stored (safe to call multiple times).
+   */
+  static async updateWaveform(permlink, waveform, duration) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      await collection.updateOne(
+        { permlink, status: 'published', waveform: null },
+        {
+          $set: {
+            waveform,
+            duration,
+            updatedAt: new Date()
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Error saving waveform:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update thumbnail URL for audio
    */
   static async updateThumbnail(permlink, username, thumbnail_url) {
