@@ -35,6 +35,11 @@ class SnapieAudioPlayer {
     if (iframe === '1' || iframe === 'true') {
       document.body.classList.add('iframe-mode');
     }
+
+    // Dark theme
+    if (params.get('theme') === 'dark') {
+      document.body.classList.add('dark-theme');
+    }
     
     // Apply mode class to container
     const container = document.getElementById('audio-player-container');

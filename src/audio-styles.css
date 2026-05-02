@@ -138,6 +138,31 @@ body.iframe-mode #audio-player-container {
   text-align: center;
 }
 
+/* ── Dark theme ─────────────────────────────────────────────── */
+body.dark-theme {
+  background-color: #0d0d0d;
+  color: #e0e0e0;
+}
+
+body.dark-theme #audio-player-container {
+  background: #1a1a1a;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+}
+
+body.dark-theme.iframe-mode,
+body.dark-theme.iframe-mode #audio-player-container {
+  background: transparent;
+  box-shadow: none;
+}
+
+body.dark-theme #audio-title {
+  color: #e0e0e0;
+}
+
+body.dark-theme #time-display {
+  color: #aaa;
+}
+
 #loading-spinner {
   margin-top: 16px;
   text-align: center;
