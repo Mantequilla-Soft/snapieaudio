@@ -83,6 +83,16 @@ router.patch('/:permlink/post-permlink',
 );
 
 /**
+ * PATCH /api/audio/:permlink - Update metadata (title, description, tags, post_permlink)
+ * Requires: API key, X-User header
+ * Body: { title?, description?, tags?, post_permlink? }
+ */
+router.patch('/:permlink',
+  validateApiKey,
+  audioController.updateMetadata
+);
+
+/**
  * GET /api/health/ipfs - IPFS daemon health and storage status
  * Public endpoint for monitoring
  */

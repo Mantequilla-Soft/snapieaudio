@@ -399,6 +399,55 @@ exports.updatePostPermlink = async (req, res) => {
 };
 
 /**
+ * Update metadata fields (title, description, tags, post_permlink) for existing audio
+ */
+exports.updateMetadata = async (req, res) => {
+  try {
+    const { permlink } = req.params;
+    const username = req.headers['x-user'] || req.user;
+    const { title, description, tags, post_permlink } = req.body;
+
+    if (!permlink) return res.status(400).json({ error: 'Missing permlink' });
+    if (!username) return res.status(401).json({ error: 'Missing X-User header' });
+
+    const updates = {};
+
+    if (title !== undefined) {
+      updates.title = String(title).slice(0, 256);
+    }
+    if (description !== undefined) {
+      updates.description = String(description).slice(0, 10000);
+    }
+    if (tags !== undefined) {
+      if (!Array.isArray(tags)) return res.status(400).json({ error: 'tags must be an array' });
+      updates.tags = tags.slice(0, 10).map(t => String(t).toLowerCase().trim());
+    }
+    if (post_permlink !== undefined) {
+      // Allow user/permlink format (e.g. "alice/openpod-rec-12345")
+      if (!/^[a-z0-9/_-]+$/i.test(post_permlink)) {
+        return res.status(400).json({ error: 'Invalid post_permlink format' });
+      }
+      if (post_permlink.length > 256) {
+        return res.status(400).json({ error: 'post_permlink too long (max 256 characters)' });
+      }
+      updates.post_permlink = post_permlink;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    const result = await AudioMessage.updateMetadata(permlink, username, updates);
+    if (!result) return res.status(404).json({ error: 'Audio not found or not authorized' });
+
+    res.json({ success: true, permlink: result.permlink });
+  } catch (error) {
+    console.error('Error updating metadata:', error);
+    res.status(500).json({ error: 'Failed to update metadata' });
+  }
+};
+
+/**
  * Get audio feed with filters, sorting, and pagination
  */
 exports.getFeed = async (req, res) => {
