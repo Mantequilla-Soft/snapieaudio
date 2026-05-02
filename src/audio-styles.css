@@ -149,10 +149,15 @@ body.dark-theme #audio-player-container {
   box-shadow: 0 2px 10px rgba(0,0,0,0.4);
 }
 
-body.dark-theme.iframe-mode,
+body.iframe-mode,
+body.dark-theme.iframe-mode {
+  background: transparent !important;
+}
+
+body.iframe-mode #audio-player-container,
 body.dark-theme.iframe-mode #audio-player-container {
-  background: transparent;
-  box-shadow: none;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 body.dark-theme #audio-title {
