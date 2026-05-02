@@ -341,6 +341,33 @@ class AudioMessage {
   }
 
   /**
+   * Update arbitrary metadata fields for audio (owner-gated)
+   */
+  static async updateMetadata(permlink, username, updates) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      const allowed = ['title', 'description', 'tags', 'post_permlink'];
+      const $set = { updatedAt: new Date() };
+      for (const field of allowed) {
+        if (updates[field] !== undefined) $set[field] = updates[field];
+      }
+
+      const result = await collection.findOneAndUpdate(
+        { permlink, owner: username, status: 'published' },
+        { $set },
+        { returnDocument: 'after' }
+      );
+
+      return result;
+    } catch (error) {
+      console.error('Error updating metadata:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Find files pending migration (only valuable content: songs, podcasts, interviews)
    */
   static async findPendingMigrations(limit = 50) {
