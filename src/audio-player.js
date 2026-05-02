@@ -25,19 +25,18 @@ class SnapieAudioPlayer {
   detectMode() {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
-    const iframe = params.get('iframe');
-    
+
     if (['minimal', 'compact', 'full'].includes(mode)) {
       this.mode = mode;
     }
-    
-    // Enable iframe mode for clean embedding (no scrollbars)
-    if (iframe === '1' || iframe === 'true') {
-      document.body.classList.add('iframe-mode');
-    }
 
-    // Dark theme
-    if (params.get('theme') === 'dark') {
+    // Auto-detect iframe embedding — always transparent when inside another page
+    const isEmbedded = window !== window.top;
+    const iframeParam = params.get('iframe');
+    if (isEmbedded || iframeParam === '1' || iframeParam === 'true') {
+      document.body.classList.add('iframe-mode');
+      document.body.classList.add('dark-theme'); // embedded always uses dark/transparent
+    } else if (params.get('theme') === 'dark') {
       document.body.classList.add('dark-theme');
     }
     
@@ -65,9 +64,10 @@ class SnapieAudioPlayer {
       full: 60
     };
     
+    const isDark = document.body.classList.contains('dark-theme');
     this.wavesurfer = WaveSurfer.create({
       container: '#waveform-container',
-      waveColor: '#ddd',
+      waveColor: isDark ? 'rgba(255,255,255,0.25)' : '#ddd',
       progressColor: '#4a9eff',
       cursorColor: '#4a9eff',
       barWidth: this.mode === 'minimal' ? 2 : 3,
