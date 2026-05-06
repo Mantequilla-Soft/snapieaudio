@@ -12,6 +12,8 @@ class SnapieAudioPlayer {
     this.speedIndex = 0;
     this.mode = 'full'; // 'minimal', 'compact', 'full'
     this.peaksProvided = false; // tracks whether waveform was pre-loaded from DB
+    this.durationHealTolerance = 1; // seconds
+    this.durationReconciled = false;
     
     this.detectMode();
     this.initializePlayer();
@@ -85,6 +87,12 @@ class SnapieAudioPlayer {
     this.wavesurfer.on('pause', () => this.updatePlayPauseButton(false));
     this.wavesurfer.on('audioprocess', () => this.updateTimeDisplay());
     this.wavesurfer.on('error', (error) => this.handleError(error));
+
+    this.wavesurfer.getMediaElement().addEventListener('loadedmetadata', () => {
+      if (!this.durationReconciled && this.audioData && this.audioData.permlink) {
+        this.reconcileAudioMetadata(this.audioData.permlink);
+      }
+    });
   }
 
   /**
@@ -140,6 +148,7 @@ class SnapieAudioPlayer {
     }
 
     this.audioData = await response.json();
+    this.durationReconciled = false;
 
     const gateways = [this.audioData.audioUrl, this.audioData.audioUrlFallback];
 
@@ -219,6 +228,10 @@ class SnapieAudioPlayer {
     if (this.audioData && this.audioData.permlink) {
       this.trackPlay(this.audioData.permlink);
 
+      if (!this.durationReconciled) {
+        this.reconcileAudioMetadata(this.audioData.permlink);
+      }
+
       // Self-healing: on first load (no stored peaks), save them for next time
       if (!this.peaksProvided) {
         this.saveWaveformPeaks(this.audioData.permlink);
@@ -237,16 +250,78 @@ class SnapieAudioPlayer {
 
       if (!peaks || !peaks.length || !duration) return;
 
-      await fetch(`/api/audio/${permlink}/waveform`, {
+      const response = await fetch(`/api/audio/${permlink}/waveform`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ waveform: peaks, duration })
       });
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.warn(`Could not save waveform peaks: ${response.status} ${errorText}`);
+        return;
+      }
+
       console.log('✓ Waveform peaks saved — next load will be instant');
     } catch (error) {
       console.warn('Could not save waveform peaks:', error);
     }
+  }
+
+  /**
+   * Correct stale duration metadata when the decoded player duration differs
+   * from what was stored with the audio record.
+   */
+  async reconcileAudioMetadata(permlink) {
+    try {
+      if (this.durationReconciled) return;
+
+      const actualDuration = this.getActualDuration();
+      if (!actualDuration) return;
+
+      const storedDuration = Number(this.audioData.duration);
+      const storedDurationIsValid = Number.isFinite(storedDuration) && storedDuration > 0;
+
+      if (
+        storedDurationIsValid &&
+        Math.abs(actualDuration - storedDuration) < this.durationHealTolerance
+      ) {
+        this.durationReconciled = true;
+        return;
+      }
+
+      this.durationReconciled = true;
+      const response = await fetch(`/api/audio/${permlink}/waveform`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration: actualDuration })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.warn(`Could not reconcile audio duration: ${response.status} ${errorText}`);
+        return;
+      }
+
+      const previousDuration = storedDurationIsValid ? `${storedDuration}s` : 'missing/invalid';
+      this.audioData.duration = actualDuration;
+      console.log(`✓ Audio duration corrected from ${previousDuration} to ${actualDuration}s`);
+    } catch (error) {
+      console.warn('Could not reconcile audio metadata:', error);
+    }
+  }
+
+  /**
+   * Prefer the media element's metadata duration when available because
+   * WaveSurfer can be initialized with stale precomputed peak duration.
+   */
+  getActualDuration() {
+    const mediaDuration = this.wavesurfer.getMediaElement().duration;
+    if (Number.isFinite(mediaDuration) && mediaDuration > 0) {
+      return mediaDuration;
+    }
+
+    return this.wavesurfer.getDuration();
   }
 
   /**

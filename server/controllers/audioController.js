@@ -1,6 +1,8 @@
 const AudioMessage = require('../models/AudioMessage');
 const ContentCreator = require('../models/ContentCreator');
 
+const MAX_AUDIO_DURATION_SECONDS = 24 * 60 * 60;
+
 /**
  * Get audio metadata by permlink or CID
  */
@@ -280,7 +282,7 @@ exports.uploadAudio = async (req, res) => {
 };
 
 /**
- * Save waveform peaks for fast future loading (self-healing enrichment).
+ * Save waveform peaks and/or corrected duration for fast future loading.
  * Called by the player after first decode — no auth required.
  */
 exports.updateWaveform = async (req, res) => {
@@ -288,15 +290,26 @@ exports.updateWaveform = async (req, res) => {
     const { permlink } = req.params;
     const { waveform, duration } = req.body;
 
-    if (!permlink || !waveform || !duration) {
+    if (!permlink || (!waveform && duration === undefined)) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    if (!Array.isArray(waveform) || !waveform.every(Array.isArray)) {
+    if (waveform && (!Array.isArray(waveform) || !waveform.every(Array.isArray))) {
       return res.status(400).json({ error: 'Invalid waveform format' });
     }
 
-    await AudioMessage.updateWaveform(permlink, waveform, parseFloat(duration));
+    const parsedDuration = duration !== undefined ? Number(duration) : undefined;
+    if (
+      parsedDuration !== undefined &&
+      (!Number.isFinite(parsedDuration) || parsedDuration <= 0 || parsedDuration > MAX_AUDIO_DURATION_SECONDS)
+    ) {
+      return res.status(400).json({ error: 'Invalid duration' });
+    }
+
+    const result = await AudioMessage.updateWaveform(permlink, waveform, parsedDuration);
+    if (!result || result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Audio not found or waveform already exists' });
+    }
 
     res.json({ success: true });
   } catch (error) {
