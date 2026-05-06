@@ -12,6 +12,7 @@ class SnapieAudioPlayer {
     this.speedIndex = 0;
     this.mode = 'full'; // 'minimal', 'compact', 'full'
     this.peaksProvided = false; // tracks whether waveform was pre-loaded from DB
+    this.durationHealTolerance = 1; // seconds
     
     this.detectMode();
     this.initializePlayer();
@@ -85,6 +86,12 @@ class SnapieAudioPlayer {
     this.wavesurfer.on('pause', () => this.updatePlayPauseButton(false));
     this.wavesurfer.on('audioprocess', () => this.updateTimeDisplay());
     this.wavesurfer.on('error', (error) => this.handleError(error));
+
+    this.wavesurfer.getMediaElement().addEventListener('loadedmetadata', () => {
+      if (this.audioData && this.audioData.permlink) {
+        this.reconcileAudioMetadata(this.audioData.permlink);
+      }
+    });
   }
 
   /**
@@ -219,6 +226,8 @@ class SnapieAudioPlayer {
     if (this.audioData && this.audioData.permlink) {
       this.trackPlay(this.audioData.permlink);
 
+      this.reconcileAudioMetadata(this.audioData.permlink);
+
       // Self-healing: on first load (no stored peaks), save them for next time
       if (!this.peaksProvided) {
         this.saveWaveformPeaks(this.audioData.permlink);
@@ -247,6 +256,44 @@ class SnapieAudioPlayer {
     } catch (error) {
       console.warn('Could not save waveform peaks:', error);
     }
+  }
+
+  /**
+   * Correct stale duration metadata when the decoded player duration differs
+   * from what was stored with the audio record.
+   */
+  async reconcileAudioMetadata(permlink) {
+    try {
+      const actualDuration = this.getActualDuration();
+      const storedDuration = parseFloat(this.audioData.duration);
+
+      if (!actualDuration || !storedDuration) return;
+      if (Math.abs(actualDuration - storedDuration) < this.durationHealTolerance) return;
+
+      await fetch(`/api/audio/${permlink}/waveform`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ duration: actualDuration })
+      });
+
+      this.audioData.duration = actualDuration;
+      console.log(`✓ Audio duration corrected from ${storedDuration}s to ${actualDuration}s`);
+    } catch (error) {
+      console.warn('Could not reconcile audio metadata:', error);
+    }
+  }
+
+  /**
+   * Prefer the media element's metadata duration when available because
+   * WaveSurfer can be initialized with stale precomputed peak duration.
+   */
+  getActualDuration() {
+    const mediaDuration = this.wavesurfer.getMediaElement().duration;
+    if (Number.isFinite(mediaDuration) && mediaDuration > 0) {
+      return mediaDuration;
+    }
+
+    return this.wavesurfer.getDuration();
   }
 
   /**

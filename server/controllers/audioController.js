@@ -280,7 +280,7 @@ exports.uploadAudio = async (req, res) => {
 };
 
 /**
- * Save waveform peaks for fast future loading (self-healing enrichment).
+ * Save waveform peaks and/or corrected duration for fast future loading.
  * Called by the player after first decode — no auth required.
  */
 exports.updateWaveform = async (req, res) => {
@@ -288,15 +288,20 @@ exports.updateWaveform = async (req, res) => {
     const { permlink } = req.params;
     const { waveform, duration } = req.body;
 
-    if (!permlink || !waveform || !duration) {
+    if (!permlink || (!waveform && duration === undefined)) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    if (!Array.isArray(waveform) || !waveform.every(Array.isArray)) {
+    if (waveform && (!Array.isArray(waveform) || !waveform.every(Array.isArray))) {
       return res.status(400).json({ error: 'Invalid waveform format' });
     }
 
-    await AudioMessage.updateWaveform(permlink, waveform, parseFloat(duration));
+    const parsedDuration = duration !== undefined ? parseFloat(duration) : undefined;
+    if (parsedDuration !== undefined && (!Number.isFinite(parsedDuration) || parsedDuration <= 0)) {
+      return res.status(400).json({ error: 'Invalid duration' });
+    }
+
+    await AudioMessage.updateWaveform(permlink, waveform, parsedDuration);
 
     res.json({ success: true });
   } catch (error) {

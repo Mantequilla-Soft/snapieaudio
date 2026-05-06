@@ -260,24 +260,37 @@ class AudioMessage {
   }
 
   /**
-   * Store waveform peaks for fast loading.
-   * Only writes if waveform is not already stored (safe to call multiple times).
+   * Store waveform peaks for fast loading and correct stale duration metadata.
+   * Waveform writes remain first-write-wins, while duration can be reconciled later.
    */
   static async updateWaveform(permlink, waveform, duration) {
     try {
       const database = await connectDB();
       const collection = database.collection(getCollectionName());
 
-      await collection.updateOne(
-        { permlink, status: 'published', waveform: null },
-        {
-          $set: {
-            waveform,
-            duration,
-            updatedAt: new Date()
+      if (duration !== undefined) {
+        await collection.updateOne(
+          { permlink, status: 'published' },
+          {
+            $set: {
+              duration,
+              updatedAt: new Date()
+            }
           }
-        }
-      );
+        );
+      }
+
+      if (waveform !== undefined) {
+        await collection.updateOne(
+          { permlink, status: 'published', waveform: null },
+          {
+            $set: {
+              waveform,
+              updatedAt: new Date()
+            }
+          }
+        );
+      }
     } catch (error) {
       console.error('Error saving waveform:', error);
       throw error;
