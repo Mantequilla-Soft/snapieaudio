@@ -268,29 +268,14 @@ class AudioMessage {
       const database = await connectDB();
       const collection = database.collection(getCollectionName());
 
-      if (duration !== undefined) {
-        await collection.updateOne(
-          { permlink, status: 'published' },
-          {
-            $set: {
-              duration,
-              updatedAt: new Date()
-            }
-          }
-        );
-      }
+      const $set = { updatedAt: new Date() };
+      if (duration !== undefined) $set.duration = duration;
+      if (waveform !== undefined) $set.waveform = waveform;
 
-      if (waveform !== undefined) {
-        await collection.updateOne(
-          { permlink, status: 'published', waveform: null },
-          {
-            $set: {
-              waveform,
-              updatedAt: new Date()
-            }
-          }
-        );
-      }
+      const query = { permlink, status: 'published' };
+      if (waveform !== undefined) query.waveform = null;
+
+      return await collection.updateOne(query, { $set });
     } catch (error) {
       console.error('Error saving waveform:', error);
       throw error;
