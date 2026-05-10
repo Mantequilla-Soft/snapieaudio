@@ -5,17 +5,15 @@ require('dotenv').config();
 
 const audioRoutes = require('./routes/audio');
 const adminRoutes = require('./routes/admin');
+const { MAX_UPLOAD_BYTES } = require('./utils/uploadLimits');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Body parser size limit (match multer upload size)
-const MAX_BODY_SIZE = process.env.UPLOAD_MAX_FILE_SIZE || '100mb';
-
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: MAX_BODY_SIZE }));
-app.use(express.urlencoded({ extended: true, limit: MAX_BODY_SIZE }));
+app.use(express.json({ limit: MAX_UPLOAD_BYTES }));
+app.use(express.urlencoded({ extended: true, limit: MAX_UPLOAD_BYTES }));
 
 // Serve static files
 app.use('/js', express.static(path.join(__dirname, '../src')));

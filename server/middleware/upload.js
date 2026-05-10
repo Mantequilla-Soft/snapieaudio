@@ -1,4 +1,5 @@
 const multer = require('multer');
+const { MAX_UPLOAD_BYTES } = require('../utils/uploadLimits');
 
 // Store files in memory for direct IPFS upload
 const storage = multer.memoryStorage();
@@ -23,7 +24,7 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: parseInt(process.env.UPLOAD_MAX_FILE_SIZE) || 104857600 // 100MB default
+    fileSize: MAX_UPLOAD_BYTES
   }
 });
 
