@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Body parser size limit (match multer upload size)
-const MAX_BODY_SIZE = process.env.UPLOAD_MAX_FILE_SIZE || '50mb';
+const MAX_BODY_SIZE = process.env.UPLOAD_MAX_FILE_SIZE || '100mb';
 
 // Middleware
 app.use(cors());
