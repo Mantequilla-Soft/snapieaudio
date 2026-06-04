@@ -10,6 +10,11 @@ const { MAX_UPLOAD_BYTES } = require('./utils/uploadLimits');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Behind nginx: trust the first proxy hop so req.ip / express-rate-limit key on
+// the real client IP (X-Forwarded-For) instead of bucketing every user under
+// the proxy's address. Override with TRUST_PROXY if there are more hops.
+app.set('trust proxy', process.env.TRUST_PROXY || 1);
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: MAX_UPLOAD_BYTES }));

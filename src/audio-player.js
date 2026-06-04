@@ -3,6 +3,40 @@
  * Handles audio playback, waveform visualization, and IPFS content loading
  */
 
+// Optional heartbeat obfuscation — AES-256-GCM with a key derived from a
+// shared LISTEN_BEAT_KEY (must match the server's). Output is
+// base64(iv|ciphertext|tag), the layout the backend expects. Best-effort: any
+// failure → null so the caller falls back to a plaintext beat. The key, if
+// present, is injected as window.LISTEN_BEAT_KEY by the page; it ships in the
+// public bundle, so this is anti-casual-tampering only.
+let _beatKeyPromise = null;
+function getBeatKey() {
+  const k = (typeof window !== 'undefined' && window.LISTEN_BEAT_KEY) || '';
+  if (!k || !globalThis.crypto?.subtle) return null;
+  if (!_beatKeyPromise) {
+    _beatKeyPromise = (async () => {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(k));
+      return crypto.subtle.importKey('raw', digest, 'AES-GCM', false, ['encrypt']);
+    })().catch(() => null);
+  }
+  return _beatKeyPromise;
+}
+async function encryptBeat(obj) {
+  try {
+    const key = await getBeatKey();
+    if (!key) return null;
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj)))
+    );
+    const out = new Uint8Array(iv.length + ct.length);
+    out.set(iv); out.set(ct, iv.length);
+    let bin = '';
+    for (let i = 0; i < out.length; i++) bin += String.fromCharCode(out[i]);
+    return btoa(bin);
+  } catch { return null; }
+}
+
 class SnapieAudioPlayer {
   constructor() {
     this.wavesurfer = null;
@@ -14,7 +48,14 @@ class SnapieAudioPlayer {
     this.peaksProvided = false; // tracks whether waveform was pre-loaded from DB
     this.durationHealTolerance = 1; // seconds
     this.durationReconciled = false;
-    
+
+    // Event-driven listen tracking. A play is only counted once ≥66% of the
+    // track has genuinely streamed: we open a server-measured session on
+    // first playback and send a heartbeat (throttled to beatMs) while the
+    // audio is actually advancing. The server measures the real wall-clock
+    // gap between beats, so a play can't be forged with a single request.
+    this.listen = { permlink: null, sid: null, token: null, beatMs: 10000, lastBeatAt: 0, credited: false, encrypted: false, starting: false };
+
     this.detectMode();
     this.initializePlayer();
     this.setupEventListeners();
@@ -84,8 +125,26 @@ class SnapieAudioPlayer {
     // WaveSurfer event listeners
     this.wavesurfer.on('ready', () => this.onAudioReady());
     this.wavesurfer.on('play', () => this.updatePlayPauseButton(true));
-    this.wavesurfer.on('pause', () => this.updatePlayPauseButton(false));
-    this.wavesurfer.on('audioprocess', () => this.updateTimeDisplay());
+    this.wavesurfer.on('pause', () => {
+      this.updatePlayPauseButton(false);
+      // Send a final measured beat for the sliver since the last one — lets a
+      // listener who pauses just past the threshold still be counted.
+      this.beatOnce();
+    });
+    // A track that finishes before the first interval (e.g. a short voice
+    // message) never fires an audioprocess beat — this final beat at the end
+    // captures the full genuine play so short clips still count.
+    this.wavesurfer.on('finish', () => this.beatOnce());
+    this.wavesurfer.on('audioprocess', () => {
+      this.updateTimeDisplay();
+      // audioprocess only fires while audio is genuinely advancing (not when
+      // paused), so it doubles as our "still listening" signal. Beat at most
+      // once per interval; the server measures the real gap between beats.
+      const L = this.listen;
+      if (L.sid && !L.credited && Date.now() - L.lastBeatAt >= L.beatMs) {
+        this.beatOnce();
+      }
+    });
     this.wavesurfer.on('error', (error) => this.handleError(error));
 
     this.wavesurfer.getMediaElement().addEventListener('loadedmetadata', () => {
@@ -226,7 +285,7 @@ class SnapieAudioPlayer {
     this.updateTimeDisplay();
 
     if (this.audioData && this.audioData.permlink) {
-      this.trackPlay(this.audioData.permlink);
+      this.startListenSession(this.audioData.permlink);
 
       if (!this.durationReconciled) {
         this.reconcileAudioMetadata(this.audioData.permlink);
@@ -390,29 +449,90 @@ class SnapieAudioPlayer {
   }
 
   /**
-   * Track play count
+   * Optional logged-in Hive user. The embed is anonymous by default, but an
+   * embedding page may pass ?user=alice so the listen can earn a
+   * pay-per-listen credit on opted-in (ppl) tracks. Anonymous playback still
+   * counts toward the public `plays` stat — it just never earns a credit.
    */
-  async trackPlay(permlink) {
+  getListenUser() {
+    const params = new URLSearchParams(window.location.search);
+    const u = (params.get('user') || params.get('username') || '').trim().toLowerCase();
+    return /^[a-z][a-z0-9.-]{2,15}$/.test(u) ? u : null;
+  }
+
+  /**
+   * Open a measured listen session for this track. Only counts a play once
+   * the listener has genuinely streamed ≥66% of it (server-measured via the
+   * heartbeats sent from the audioprocess handler) — never on mere load.
+   */
+  async startListenSession(permlink) {
+    // Reset state for this track and guard against double-open.
+    if (this.listen.starting || (this.listen.sid && this.listen.permlink === permlink)) return;
+    this.listen = { permlink, sid: null, token: null, beatMs: 10000, lastBeatAt: 0, credited: false, encrypted: false, starting: true };
+
     try {
-      const response = await fetch('/api/audio/play', {
+      const body = { permlink };
+      const user = this.getListenUser();
+      if (user) body.username = user;
+
+      const response = await fetch('/api/audio/play-start', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ permlink })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
       });
-      
+
       if (!response.ok) {
-        console.warn(`Failed to track play: ${response.status} ${response.statusText}`);
+        console.warn(`Could not open listen session: ${response.status} ${response.statusText}`);
         return;
       }
-      
+
       const data = await response.json();
-      if (data.success) {
-        console.log(`✓ Play tracked. Total plays: ${data.plays}`);
+      // Ignore a stale response if the track changed while we were waiting.
+      if (!data?.sid || this.listen.permlink !== permlink) return;
+
+      this.listen.sid = data.sid;
+      this.listen.token = data.token;
+      this.listen.encrypted = !!data.encrypted;
+      this.listen.beatMs = (data.beatSeconds || 10) * 1000;
+      this.listen.lastBeatAt = Date.now(); // first beat one interval from now
+    } catch (error) {
+      console.warn('Could not open listen session:', error);
+    } finally {
+      this.listen.starting = false;
+    }
+  }
+
+  /**
+   * Send one heartbeat. Called (throttled) from audioprocess while the audio
+   * is really advancing. Best-effort — never disrupts playback.
+   */
+  async beatOnce() {
+    const L = this.listen;
+    if (!L.sid || L.credited) return;
+    L.lastBeatAt = Date.now(); // throttle before the await so we don't double-fire
+
+    try {
+      let body = { sid: L.sid, token: L.token };
+      if (L.encrypted) {
+        const enc = await encryptBeat(body);
+        if (!enc) return; // server requires encryption but we couldn't — skip
+        body = { enc };
+      }
+
+      const response = await fetch('/api/audio/play-beat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data?.done || data?.credited) {
+        L.credited = true; // threshold reached — stop beating
+        console.log('✓ Listen counted');
       }
     } catch (error) {
-      console.warn('Failed to track play count:', error);
+      // best-effort — never disrupt playback
     }
   }
 
