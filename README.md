@@ -314,6 +314,29 @@ no scripts, keys, or CORS setup to add on the host page.
   <iframe src="https://audio.3speak.tv/play?a=dkojohs&user=alice"></iframe>
   ```
 
+### Handing over the logged-in username
+
+Other frontends can identify the listener two ways — both feed the same
+server-measured session, and both are optional (omit → anonymous, which still
+counts toward `plays`):
+
+1. **Embedding the iframe** — append `?user=<hive-username>` to the player URL
+   (as above). The bundled player reads it and sends it on `play-start`. The
+   embedding page is responsible for only setting it for a genuinely logged-in
+   user.
+2. **Calling the API directly** (custom player) — send the username in the
+   `play-start` body:
+
+   ```http
+   POST /api/audio/play-start
+   { "permlink": "dkojohs", "username": "alice" }
+   ```
+
+The username is only honoured if it's a valid Hive name; a listen earns the
+author only when the track is `ppl`, the user is logged in, and the user is not
+the track owner (self-listens never pay). Anonymous listens on a `ppl` track
+still credit the author at a reduced weight.
+
 > **Operators (deploying this server), not embedders:** the new
 > `/api/audio/play-start` + `/play-beat` routes must be live or the player
 > degrades gracefully (no counting, no errors). If you set `LISTEN_BEAT_KEY`,

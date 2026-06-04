@@ -167,6 +167,10 @@ exports.playStart = async (req, res) => {
 
         const ip = clientIp(req);
         const duration = Number(track.duration);
+        // Whether the track is pay-per-listen. Stored on every row so the payout
+        // worker can credit anonymous listens on ppl tracks (at a reduced
+        // weight) without re-joining embed-audio.
+        const isPpl = track.ppl === true;
 
         // Durationless track: we can't measure ≥66%, so fall back to counting
         // one full listen per IP per day. Never payable — an unmeasured listen
@@ -181,17 +185,18 @@ exports.playStart = async (req, res) => {
                 listenedSeconds: null,
                 trackDuration: null,
                 payable: false,
+                ppl: isPpl,
                 noDuration: true,
                 createdAt: new Date(),
             }, NO_DURATION_DEDUPE_MS);
             return res.json({ tracked: false, payable: false, reason: 'no_duration' });
         }
 
-        // A session earns a pay-per-listen credit only when the track opts in
-        // (ppl) AND a logged-in listener who is NOT the author is streaming it
-        // (self-listen would be self-dealing). Otherwise it still counts the
-        // play, just without a payout-eligible row.
-        const payable = !!username && track.ppl === true && username !== track.owner;
+        // A session earns a FULL pay-per-listen credit only when the track opts
+        // in (ppl) AND a logged-in listener who is NOT the author is streaming it
+        // (self-listen would be self-dealing). Anonymous listens on a ppl track
+        // still earn the author a reduced share (see audioPayouts.js).
+        const payable = !!username && isPpl && username !== track.owner;
 
         const sid = crypto.randomBytes(16).toString('hex');
         const durationMs = Math.round(duration * 1000);
@@ -206,6 +211,7 @@ exports.playStart = async (req, res) => {
             ip,
             username,             // stored for reporting even when not payable
             payable,
+            ppl: isPpl,
             accumulatedMs: 0,
             credited: false,
             startedAt: now,
@@ -299,6 +305,7 @@ exports.playBeat = async (req, res) => {
                     listenedSeconds: Math.round(accumulatedMs / 1000),
                     trackDuration: Math.round(s.durationMs / 1000),
                     payable: !!s.payable,
+                    ppl: !!s.ppl,
                     createdAt: new Date(now),
                 }, s.username ? LISTEN_DEDUPE_MS : PLAY_DEDUPE_MS);
             }
