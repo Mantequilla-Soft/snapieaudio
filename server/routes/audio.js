@@ -1,6 +1,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const audioController = require('../controllers/audioController');
+const listenController = require('../controllers/listenController');
 const { validateApiKey } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
@@ -10,6 +11,14 @@ const router = express.Router();
 const playLimiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  message: { error: 'Too many requests, please try again later' }
+});
+
+// Heartbeats fire every ~10s per active listener and many share one IP behind
+// NAT, so they need far more headroom than the one-shot endpoints.
+const beatLimiter = rateLimit({
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000,
+  max: parseInt(process.env.BEAT_RATE_LIMIT_MAX_REQUESTS) || 600,
   message: { error: 'Too many requests, please try again later' }
 });
 
@@ -39,10 +48,29 @@ router.get('/feed', audioController.getFeed);
 router.get('/', audioController.getAudioMetadata);
 
 /**
- * POST /api/audio/play - Increment play count
+ * POST /api/audio/play - Increment play count (LEGACY, count-on-load).
  * Body: { permlink: "dkojohs" }
+ * Superseded by the event-driven play-start/play-beat flow below — kept for
+ * backward compatibility with any external caller. The in-repo player no
+ * longer calls it.
  */
 router.post('/play', playLimiter, audioController.incrementPlayCount);
+
+/**
+ * POST /api/audio/play-start - Open a measured listen session.
+ * Body: { permlink: "dkojohs", username?: "alice" }
+ * Returns { sid, token, beatSeconds, threshold, payable, encrypted }.
+ */
+router.post('/play-start', playLimiter, listenController.playStart);
+
+/**
+ * POST /api/audio/play-beat - Heartbeat while audio is genuinely playing.
+ * Body: { sid, token }  — or { enc } when LISTEN_BEAT_KEY is set.
+ * The server credits the wall-clock gap it measures between beats; at ≥66%
+ * it counts one play (anonymous) and, for logged-in ppl listens, logs a
+ * pay-per-listen row.
+ */
+router.post('/play-beat', beatLimiter, listenController.playBeat);
 
 /**
  * POST /api/audio/upload - Upload new audio

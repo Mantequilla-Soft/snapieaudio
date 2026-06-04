@@ -556,3 +556,7 @@ class AudioMessage {
 }
 
 module.exports = AudioMessage;
+// Expose the shared connection + collection name so the listen-tracking
+// module reuses the single pooled client instead of opening its own.
+module.exports.connectDB = connectDB;
+module.exports.getAudioCollectionName = getCollectionName;

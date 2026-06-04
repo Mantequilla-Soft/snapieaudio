@@ -176,21 +176,71 @@ GET /api/audio/feed?tag=music&sort=plays    # Trending music
 GET /api/audio/feed?owner=meno              # User's audio
 ```
 
-### Track Play Count
+### Track Listens (event-driven)
+
+A play is counted only after the listener has **genuinely streamed ≥66%** of
+the track — never on mere load. The player opens a server-measured session and
+sends a heartbeat (~every 3s, plus a final one on pause/finish) while the
+audio is actually advancing; the
+server credits only the wall-clock gap it observes between beats (clamped per
+beat), so a play can't be forged with a single request.
+
+```http
+POST /api/audio/play-start
+Content-Type: application/json
+
+{ "permlink": "dkojohs", "username": "alice" }   // username optional (anonymous embed omits it)
+
+Response:
+{ "sid": "…", "token": "…", "beatSeconds": 3, "threshold": 0.66, "payable": false, "encrypted": false }
+```
+
+```http
+POST /api/audio/play-beat
+Content-Type: application/json
+
+{ "sid": "…", "token": "…" }      // or { "enc": "<base64>" } when LISTEN_BEAT_KEY is set
+
+Response:
+{ "progress": 0.71, "credited": true, "done": true }
+```
+
+At ≥66% the server bumps `plays` and writes **one row to `audio-listen-log`**
+(deduped per listener — by username when logged in, else by IP). Every credited
+listen lives in this one collection for reporting, each carrying:
+
+- `payable: false` — anonymous / non-`ppl` / self / unmeasured listen. Counts
+  toward `plays` and analytics only.
+- `payable: true` — logged-in listener on a pay-per-listen (`ppl`) track who is
+  not the author; eligible for the weekly payout.
+- `listenedSeconds` + `trackDuration` — how much of the track was genuinely
+  streamed, tagged with `ip` and `username` (null when anonymous).
+- `createdAt` (full timestamp) + `listenDate` (UTC `YYYY-MM-DD`) — when the
+  listen happened, for time-series reporting and consolidation grouping.
+
+After 5 months a checker cron folds each track's old rows into its `embed-audio`
+doc (`archivedListens` / `archivedPayableListens`) and deletes them, so the
+collection stays bounded while lifetime totals are preserved.
+
+> ⚠️ **Payout coupling:** the shared 3speak-checker payout worker credits the
+> track owner for every row, so it filters `payable: { $ne: false }` to skip
+> anonymous rows. Both services must be deployed together.
+
+A track with **missing/zero duration** can't be measured, so `play-start`
+records one full listen (deduped by IP per day, `payable:false`) and returns
+`{ "tracked": false, "reason": "no_duration" }` instead of a session.
+
+> **Legacy:** `POST /api/audio/play` (blind count-on-load) still exists for
+> backward compatibility but the bundled player no longer calls it.
 
 ```http
 POST /api/audio/play
 Content-Type: application/json
 
-{
-  "permlink": "dkojohs"
-}
+{ "permlink": "dkojohs" }
 
 Response:
-{
-  "success": true,
-  "plays": 151
-}
+{ "success": true, "plays": 151 }
 ```
 
 ## 📊 MongoDB Schema
@@ -242,6 +292,58 @@ const AudioMessage = ({ permlink }) => (
   />
 );
 ```
+
+### What an embedder needs to do
+
+**Nothing.** Listen tracking is entirely self-contained in the player the
+iframe loads from this server — it calls same-origin endpoints, so there are
+no scripts, keys, or CORS setup to add on the host page.
+
+- **Existing embeds upgrade automatically.** The iframe fetches the player
+  fresh from the server on every load, so once this server is deployed there's
+  nothing to change in already-placed embeds.
+- **Counting requires real playback.** Heartbeats fire from the audio's
+  `audioprocess` event, so a play is counted only after the listener genuinely
+  streams ≥66% of the track. Keep `allow="autoplay"` if you want playback (and
+  therefore counting) to start on its own; otherwise it begins on first play.
+- **Optional — credit a listener (pay-per-listen):** pass a Hive username so a
+  qualifying listen on a `ppl` track earns a credit. The default embed is
+  anonymous and still counts toward the public `plays` stat.
+
+  ```html
+  <iframe src="https://audio.3speak.tv/play?a=dkojohs&user=alice"></iframe>
+  ```
+
+### Handing over the logged-in username
+
+Other frontends can identify the listener two ways — both feed the same
+server-measured session, and both are optional (omit → anonymous, which still
+counts toward `plays`):
+
+1. **Embedding the iframe** — append `?user=<hive-username>` to the player URL
+   (as above). The bundled player reads it and sends it on `play-start`. The
+   embedding page is responsible for only setting it for a genuinely logged-in
+   user.
+2. **Calling the API directly** (custom player) — send the username in the
+   `play-start` body:
+
+   ```http
+   POST /api/audio/play-start
+   { "permlink": "dkojohs", "username": "alice" }
+   ```
+
+The username is only honoured if it's a valid Hive name; a listen earns the
+author only when the track is `ppl`, the user is logged in, and the user is not
+the track owner (self-listens never pay). Anonymous listens on a `ppl` track
+still credit the author at a reduced weight.
+
+> **Operators (deploying this server), not embedders:** the new
+> `/api/audio/play-start` + `/play-beat` routes must be live or the player
+> degrades gracefully (no counting, no errors). If you set `LISTEN_BEAT_KEY`,
+> you must also inject the **same** value into the player page as
+> `window.LISTEN_BEAT_KEY`, or the server will require encrypted beats the
+> client can't produce and counting silently stops. Left unset, beats are
+> plaintext and everything works out of the box.
 
 ## 🛠️ Development
 
