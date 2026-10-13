@@ -176,6 +176,18 @@ body.iframe-mode.bg-transparent #audio-player-container {
   background: transparent !important;
 }
 
+/* Inside the pill the speed button is a quiet round chip, so the play button
+   stays the only accent */
+body.iframe-mode #speed-btn {
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #e0e0e0;
+}
+
+body.iframe-mode #speed-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 body.dark-theme #audio-title {
   color: #e0e0e0;
 }
