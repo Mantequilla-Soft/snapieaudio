@@ -237,6 +237,9 @@ exports.uploadAudio = async (req, res) => {
 
     console.log(`✓ Audio created: ${audio.permlink}`);
 
+    // Add the MP3 companion in the background; the upload does not wait for it
+    require('../jobs/mp3Worker').kick();
+
     // Determine protocol - use X-Forwarded-Proto if behind proxy, otherwise force https in production
     const proto = req.get('X-Forwarded-Proto') || (process.env.NODE_ENV === 'production' ? 'https' : req.protocol);
     const host = req.get('host');
@@ -558,7 +561,9 @@ exports.getFeed = async (req, res) => {
       likes: audio.likes || 0,
       createdAt: audio.createdAt,
       audioUrl: `${primaryGateway}/ipfs/${audio.audio_cid}`,
-      audioUrlFallback: `${fallbackGateway}/ipfs/${audio.audio_cid}`
+      audioUrlFallback: `${fallbackGateway}/ipfs/${audio.audio_cid}`,
+      mp3_cid: audio.mp3_cid || null,
+      mp3Url: audio.mp3_cid ? `${primaryGateway}/ipfs/${audio.mp3_cid}` : null
     }));
 
     // Return paginated response

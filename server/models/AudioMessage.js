@@ -65,6 +65,9 @@ async function createIndexes() {
   
   // API key usage tracking
   await collection.createIndex({ api_key_used: 1, createdAt: -1 });
+
+  // MP3 companion queue (find uploads not checked yet)
+  await collection.createIndex({ mp3_checked: 1, mp3_retry_after: 1 });
   
   console.log('✅ Database indexes created for', getCollectionName());
 }
@@ -140,6 +143,8 @@ class AudioMessage {
         context_type: audio.context_type,
         context_id: audio.context_id,
         thumbnail_url: audio.thumbnail_url || null,
+        mp3_cid: audio.mp3_cid || null,
+        mp3Url: audio.mp3_cid ? `${primaryUrl.split('/ipfs/')[0]}/ipfs/${audio.mp3_cid}` : null,
         ipfs_status: audio.ipfs_status
       };
     } catch (error) {
@@ -248,7 +253,10 @@ class AudioMessage {
         
         // Storage management
         last_gc_check: null,
-        pin_until: null
+        pin_until: null,
+
+        // MP3 companion: false until the mp3 worker has looked at this upload
+        mp3_checked: false
       };
       
       const result = await collection.insertOne(document);
@@ -536,6 +544,114 @@ class AudioMessage {
       );
     } catch (error) {
       console.error('Error retrying migration:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Uploads the mp3 worker has not checked yet, newest first. Entries whose
+   * last attempt failed wait until mp3_retry_after before they come back.
+   */
+  static async findMp3Unchecked(limit = 20) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      return await collection.find({
+        status: 'published',
+        mp3_checked: { $ne: true },
+        $or: [
+          { mp3_retry_after: null },
+          { mp3_retry_after: { $lte: new Date() } }
+        ]
+      })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .toArray();
+    } catch (error) {
+      console.error('Error finding unchecked mp3 uploads:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Record a finished check: mp3_status is 'converted', 'not_needed' or
+   * (after the last attempt) 'failed'. Sets the mp3_checked flag.
+   */
+  static async markMp3Checked(permlink, fields) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      await collection.updateOne(
+        { permlink },
+        {
+          $set: {
+            ...fields,
+            mp3_checked: true,
+            mp3_checked_at: new Date(),
+            mp3_retry_after: null
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Error marking mp3 check:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Record a failed attempt that will be retried later. The upload stays
+   * unchecked (mp3_checked stays false).
+   */
+  static async markMp3Retry(permlink, errorMessage, attempts, retryAfter) {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      await collection.updateOne(
+        { permlink },
+        {
+          $set: {
+            mp3_attempts: attempts,
+            mp3_error: errorMessage,
+            mp3_retry_after: retryAfter
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Error marking mp3 retry:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * MP3 companion statistics for the admin dashboard
+   */
+  static async getMp3Stats() {
+    try {
+      const database = await connectDB();
+      const collection = database.collection(getCollectionName());
+
+      const rows = await collection.aggregate([
+        { $match: { status: 'published' } },
+        {
+          $group: {
+            _id: { checked: { $eq: ['$mp3_checked', true] }, status: '$mp3_status' },
+            count: { $sum: 1 }
+          }
+        }
+      ]).toArray();
+
+      const result = { total: 0, unchecked: 0, converted: 0, not_needed: 0, failed: 0 };
+      rows.forEach(row => {
+        result.total += row.count;
+        if (!row._id.checked) result.unchecked += row.count;
+        else result[row._id.status] = (result[row._id.status] || 0) + row.count;
+      });
+      return result;
+    } catch (error) {
+      console.error('Error getting mp3 stats:', error);
       throw error;
     }
   }

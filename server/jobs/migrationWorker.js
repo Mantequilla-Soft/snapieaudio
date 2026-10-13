@@ -221,6 +221,17 @@ class MigrationWorker {
       ['local', 'supernode']
     );
     console.log(`[Migration ${audio.permlink}] ✓ Database updated`);
+
+    // Step 5: Back up the MP3 companion too (best effort; the original is
+    // what counts, and the mp3 can always be rebuilt from it)
+    if (audio.mp3_cid) {
+      try {
+        await this.pinToSupernode(audio.mp3_cid);
+        console.log(`[Migration ${audio.permlink}] ✓ MP3 companion pinned to supernode`);
+      } catch (error) {
+        console.warn(`[Migration ${audio.permlink}] MP3 companion not pinned: ${error.message}`);
+      }
+    }
   }
 
   /**

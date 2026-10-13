@@ -78,7 +78,11 @@ class SnapieAudioPlayer {
     const iframeParam = params.get('iframe');
     if (isEmbedded || iframeParam === '1' || iframeParam === 'true') {
       document.body.classList.add('iframe-mode');
-      document.body.classList.add('dark-theme'); // embedded always uses dark/transparent
+      document.body.classList.add('dark-theme'); // embedded always uses the dark theme
+      // Slight dark backdrop by default (see audio-styles.css); ?bg=transparent drops it
+      if (params.get('bg') === 'transparent') {
+        document.body.classList.add('bg-transparent');
+      }
     } else if (params.get('theme') === 'dark') {
       document.body.classList.add('dark-theme');
     }

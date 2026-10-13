@@ -264,9 +264,35 @@ Response:
   },
   plays: 150,
   created: ISODate("2025-11-26T10:30:00Z"),
-  status: "active"
+  status: "active",
+
+  // MP3 companion (set by jobs/mp3Worker.js)
+  mp3_checked: true,          // false/missing = not looked at yet
+  mp3_status: "converted",    // converted | not_needed | failed
+  mp3_cid: "QmXo...",         // only when converted
+  mp3_size: 2345678,
+  mp3_duration: 146.5,        // measured by ffmpeg
+  mp3_error: null             // why it failed, if it did
 }
 ```
+
+### MP3 companions
+
+Browser recordings arrive as WebM/Opus, which the player handles but Apple
+Podcasts and most classic podcast apps refuse. The original is never touched;
+`jobs/mp3Worker.js` adds a 128 kbps CBR MP3 next to it, pinned on the local
+node, and stores it as `mp3_cid`. mp3, m4a and aac uploads are marked
+`not_needed` without being downloaded.
+
+- Runs on **every service start** over everything with `mp3_checked != true`,
+  and again after each upload (in the background, the upload never waits).
+- A failed attempt is retried after `MP3_RETRY_DELAY_MINUTES`; after
+  `MP3_MAX_ATTEMPTS` the upload is marked `mp3_status: "failed"`.
+- ffmpeg comes from the `ffmpeg-static` package (`npm install`), or
+  `FFMPEG_PATH`, or the system `ffmpeg`. If none works the worker stays idle and
+  leaves uploads unchecked.
+- Progress: `GET /api/admin/mp3/stats`, or in Mongo
+  `db['embed-audio'].countDocuments({ mp3_checked: { $ne: true } })`.
 
 ## 🎨 Usage Examples
 
@@ -395,6 +421,12 @@ http://localhost:3000/play?a=testaud1
 | `IPFS_FALLBACK_GATEWAY_2` | cloudflare-ipfs.com/ipfs/ | Fallback gateway #2 |
 | `RATE_LIMIT_WINDOW_MS` | 60000 | Rate limit window |
 | `RATE_LIMIT_MAX_REQUESTS` | 100 | Max requests per window |
+| `ENABLE_MP3_TRANSCODE` | true | `false` turns the MP3 companion worker off |
+| `MP3_BITRATE` | 128k | MP3 companion bitrate (CBR) |
+| `MP3_MAX_ATTEMPTS` | 3 | Attempts before an upload is marked `failed` |
+| `MP3_RETRY_DELAY_MINUTES` | 60 | Wait between attempts |
+| `MP3_FETCH_TIMEOUT_SECONDS` | 300 | Timeout for reading an original from IPFS |
+| `FFMPEG_PATH` | (ffmpeg-static) | Use a specific ffmpeg binary |
 
 ### MongoDB Indexes
 
