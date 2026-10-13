@@ -149,8 +149,16 @@ body.dark-theme #audio-player-container {
   box-shadow: 0 2px 10px rgba(0,0,0,0.4);
 }
 
+/* Embedded: the player is always dark-themed (light waveform and time), so a
+   transparent page made it invisible on light host sites. A slight dark
+   backdrop keeps it readable everywhere. It sits on the body, which fills the
+   iframe, so nothing inside moves. Embedders can opt out with ?bg=transparent. */
 body.iframe-mode,
 body.dark-theme.iframe-mode {
+  background: rgba(20, 20, 20, 0.85) !important;
+}
+
+body.iframe-mode.bg-transparent {
   background: transparent !important;
 }
 
