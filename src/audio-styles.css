@@ -150,30 +150,30 @@ body.dark-theme #audio-player-container {
 }
 
 /* Embedded: the player is always dark-themed (light waveform and time), so a
-   transparent page made it invisible on light host sites. A slight dark
-   backdrop keeps it readable everywhere. The body is stretched to fill the
-   iframe (nothing inside moves) and rounded. The transparent gradient on html
-   stops the body background from being propagated to the whole canvas, which
-   would square the corners off. Opt out with ?bg=transparent. */
-html:has(body.iframe-mode) {
-  background: linear-gradient(transparent, transparent);
-}
-
+   transparent page made it invisible on light host sites. The player itself
+   now sits on a slight dark pill; the page around it stays transparent and the
+   pill is centred in the iframe, so embed heights do not change.
+   Opt out with ?bg=transparent. */
 body.iframe-mode,
 body.dark-theme.iframe-mode {
-  background: rgba(20, 20, 20, 0.85) !important;
-  min-height: 100vh;
-  border-radius: 10px;
-}
-
-body.iframe-mode.bg-transparent {
   background: transparent !important;
+  min-height: 100vh;
 }
 
 body.iframe-mode #audio-player-container,
 body.dark-theme.iframe-mode #audio-player-container {
-  background: transparent !important;
+  background: rgba(20, 20, 20, 0.85) !important;
+  border-radius: 9999px;
   box-shadow: none !important;
+}
+
+/* compact and minimal bring their own padding; full mode needs some inside the pill */
+body.iframe-mode #audio-player-container.mode-full {
+  padding: 12px 20px;
+}
+
+body.iframe-mode.bg-transparent #audio-player-container {
+  background: transparent !important;
 }
 
 body.dark-theme #audio-title {
