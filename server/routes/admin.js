@@ -65,6 +65,20 @@ router.get('/users/:username', requireAuth, adminController.getUserDetails);
 router.put('/users/:username/ban', requireAuth, adminController.toggleUserBan);
 
 /**
+ * GET /api/admin/mp3/stats - MP3 companion progress (unchecked / converted / not_needed / failed)
+ */
+router.get('/mp3/stats', requireAuth, async (req, res) => {
+  try {
+    const AudioMessage = require('../models/AudioMessage');
+    const mp3Worker = require('../jobs/mp3Worker');
+    res.json({ success: true, stats: await AudioMessage.getMp3Stats(), worker: mp3Worker.getStatus() });
+  } catch (error) {
+    console.error('Error getting mp3 stats:', error);
+    res.status(500).json({ error: 'Failed to get mp3 stats' });
+  }
+});
+
+/**
  * Migration Management Endpoints
  */
 

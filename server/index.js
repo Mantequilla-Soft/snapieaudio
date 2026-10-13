@@ -123,6 +123,18 @@ async function startServer() {
     } else {
       console.log('⏸️  Migration worker disabled (dev mode or ENABLE_MIGRATIONS=false)');
     }
+
+    // MP3 companions for podcast apps: checks every unchecked upload on each
+    // start, then again after every upload (see jobs/mp3Worker.js)
+    if (process.env.ENABLE_MP3_TRANSCODE !== 'false') {
+      try {
+        require('./jobs/mp3Worker').start();
+      } catch (error) {
+        console.error('⚠️  MP3 worker failed to start:', error.message);
+      }
+    } else {
+      console.log('⏸️  MP3 worker disabled (ENABLE_MP3_TRANSCODE=false)');
+    }
     
   } catch (error) {
     console.error('⚠️  IPFS health check failed:', error.message);
