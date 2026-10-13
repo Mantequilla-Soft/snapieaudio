@@ -151,11 +151,19 @@ body.dark-theme #audio-player-container {
 
 /* Embedded: the player is always dark-themed (light waveform and time), so a
    transparent page made it invisible on light host sites. A slight dark
-   backdrop keeps it readable everywhere. It sits on the body, which fills the
-   iframe, so nothing inside moves. Embedders can opt out with ?bg=transparent. */
+   backdrop keeps it readable everywhere. The body is stretched to fill the
+   iframe (nothing inside moves) and rounded. The transparent gradient on html
+   stops the body background from being propagated to the whole canvas, which
+   would square the corners off. Opt out with ?bg=transparent. */
+html:has(body.iframe-mode) {
+  background: linear-gradient(transparent, transparent);
+}
+
 body.iframe-mode,
 body.dark-theme.iframe-mode {
   background: rgba(20, 20, 20, 0.85) !important;
+  min-height: 100vh;
+  border-radius: 10px;
 }
 
 body.iframe-mode.bg-transparent {
