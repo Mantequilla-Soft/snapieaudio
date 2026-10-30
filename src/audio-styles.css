@@ -194,6 +194,21 @@ body.iframe-mode #speed-btn:hover {
 #tip-btn {
   text-decoration: none;
   color: white;
+  /* Same size as the speed chip beside it, in every mode */
+  width: 52px;
+  height: 52px;
+}
+
+@media (max-width: 480px) {
+  #tip-btn {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+.mode-compact #tip-btn {
+  width: 44px !important;
+  height: 44px !important;
 }
 
 #tip-btn svg {
