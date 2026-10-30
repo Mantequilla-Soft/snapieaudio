@@ -188,6 +188,25 @@ body.iframe-mode #speed-btn:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* The tip button is a link (it opens 3speak.tv's tip page) dressed as a
+   control; inside the pill it is a quiet chip like the speed button, with
+   the bolt as its only colour */
+#tip-btn {
+  text-decoration: none;
+}
+
+#tip-btn svg {
+  fill: #f59e0b;
+}
+
+body.iframe-mode #tip-btn {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+body.iframe-mode #tip-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 body.dark-theme #audio-title {
   color: #e0e0e0;
 }
