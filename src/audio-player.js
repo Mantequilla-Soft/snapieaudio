@@ -231,6 +231,39 @@ class SnapieAudioPlayer {
 
     document.getElementById('audio-title').textContent =
       this.audioData.title || 'Voice Message';
+
+    this.setupTipButton();
+  }
+
+  /**
+   * Tip button: opens the creator's tip page on 3speak.tv (HIVE / HBD or
+   * Lightning) in a popup, because an embed can't sign or pay by itself. The
+   * page closes itself once the tip is sent. Shown only for audio with a Hive
+   * post, which is what a tip is credited to, and not in minimal mode. Where
+   * popups don't exist or are blocked (phones, some host sites) the link opens
+   * as an ordinary tab.
+   *
+   * `?tip=preview` points it at preview.3speak.tv for testing; no other host
+   * can be chosen, so an embed can't send viewers to a look-alike tip page.
+   */
+  setupTipButton() {
+    const btn = document.getElementById('tip-btn');
+    const d = this.audioData || {};
+    if (!btn || this.mode === 'minimal' || !d.owner || !d.post_permlink) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const host = params.get('tip') === 'preview' ? 'https://preview.3speak.tv' : 'https://3speak.tv';
+    const url = `${host}/tip/@${encodeURIComponent(d.owner)}/${encodeURIComponent(d.post_permlink)}?kind=audio`;
+    btn.href = url;
+    btn.style.display = '';
+    btn.addEventListener('click', (e) => {
+      const w = 440;
+      const h = 720;
+      const left = Math.max(0, Math.round((window.screen.width - w) / 2));
+      const top = Math.max(0, Math.round((window.screen.height - h) / 2));
+      const win = window.open(url, '3speak-tip', `popup,width=${w},height=${h},left=${left},top=${top}`);
+      if (win) e.preventDefault();
+    });
   }
 
   /**

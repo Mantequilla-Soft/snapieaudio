@@ -188,6 +188,46 @@ body.iframe-mode #speed-btn:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* The tip button is a link (it opens 3speak.tv's tip page) dressed as a
+   control, with 3speak.tv's gift icon (an outline, so stroke not fill);
+   inside the pill it is a quiet chip like the speed button */
+#tip-btn {
+  text-decoration: none;
+  color: white;
+  /* Same size as the speed chip beside it, in every mode */
+  width: 52px;
+  height: 52px;
+}
+
+@media (max-width: 480px) {
+  #tip-btn {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+.mode-compact #tip-btn {
+  width: 44px !important;
+  height: 44px !important;
+}
+
+#tip-btn svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+body.iframe-mode #tip-btn {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e0e0e0;
+}
+
+body.iframe-mode #tip-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 body.dark-theme #audio-title {
   color: #e0e0e0;
 }
