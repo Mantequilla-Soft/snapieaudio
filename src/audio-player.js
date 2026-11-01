@@ -133,12 +133,13 @@ class SnapieAudioPlayer {
 
     // WaveSurfer event listeners
     this.wavesurfer.on('ready', () => this.onAudioReady());
+    // While a sponsored spot plays the track is paused, and the button is the spot's.
     this.wavesurfer.on('play', () => {
-      this.updatePlayPauseButton(true);
+      if (!this.adSpot?.active) this.updatePlayPauseButton(true);
       if (this.listenTime) this.listenTime.start(this.wavesurfer.getMediaElement());
     });
     this.wavesurfer.on('pause', () => {
-      this.updatePlayPauseButton(false);
+      if (!this.adSpot?.active) this.updatePlayPauseButton(false);
       // Send a final measured beat for the sliver since the last one — lets a
       // listener who pauses just past the threshold still be counted.
       this.beatOnce();
@@ -253,6 +254,50 @@ class SnapieAudioPlayer {
       this.audioData.title || 'Voice Message';
 
     this.setupTipButton();
+    this.setupAudioAd();
+  }
+
+  /**
+   * Sponsored audio spots (src/audio-ad.js): the checker decides whether this track
+   * carries one. While it plays, a strip takes the waveform's place (the disclosure,
+   * the product, the message and its link); after it, a "Find out more" chip stays
+   * for the rest of the track (not in minimal mode, like speed and tip).
+   */
+  setupAudioAd() {
+    const d = this.audioData || {};
+    if (!window.AudioAdSpot || !d.owner || !d.permlink) return;
+    this.adSpot = new window.AudioAdSpot({
+      owner: d.owner,
+      permlink: d.permlink,
+      viewer: this.getListenUser(),
+      onChange: (phase, spot) => this.renderAd(phase, spot),
+    });
+    this.adSpot.attach(this.wavesurfer.getMediaElement());
+    this.adSpot.request();
+  }
+
+  renderAd(phase, spot) {
+    const strip = document.getElementById('ad-strip');
+    const wave = document.getElementById('waveform-container');
+    const after = document.getElementById('ad-more-btn');
+    if (!strip || !wave) return;
+    const running = phase === 'playing' || phase === 'paused';
+    strip.style.display = running ? '' : 'none';
+    wave.style.display = running ? 'none' : '';
+    if (running) {
+      strip.querySelector('.ad-label').textContent = spot.label || 'Ad';
+      strip.querySelector('.ad-product').textContent = spot.productName || '';
+      strip.querySelector('.ad-message').textContent = spot.message || '';
+      const more = strip.querySelector('.ad-more');
+      if (spot.clickUrl) { more.href = spot.clickUrl; more.style.display = ''; } else more.style.display = 'none';
+      this.updatePlayPauseButton(phase === 'playing');
+    }
+    if (after && phase === 'heard' && spot.clickUrl && this.mode !== 'minimal') {
+      after.href = spot.clickUrl;
+      after.title = spot.productName ? `Find out more about ${spot.productName}` : 'Find out more';
+      after.querySelector('.ad-label').textContent = spot.label || 'Ad';
+      after.style.display = '';
+    }
   }
 
   /**
@@ -444,6 +489,7 @@ class SnapieAudioPlayer {
    * Toggle play/pause
    */
   togglePlayPause() {
+    if (this.adSpot && this.adSpot.toggle()) return;
     this.wavesurfer.playPause();
   }
 

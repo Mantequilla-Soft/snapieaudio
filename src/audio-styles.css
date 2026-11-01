@@ -411,3 +411,104 @@ wave {
     min-width: 60px;
   }
 }
+
+/* ─── Sponsored audio spots (audio-ad.js) ─────────────────────────────────
+   While a spot plays this strip takes the waveform's place, same height, so the
+   embed never grows. After it, #ad-more-btn keeps the link in the controls. */
+#ad-strip {
+  flex: 1;
+  min-width: 0;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.06);
+  color: #333;
+  font-size: 14px;
+}
+
+.mode-compact #ad-strip { min-height: 50px; }
+.mode-minimal #ad-strip { min-height: 30px; font-size: 12px; gap: 6px; padding: 0 8px; }
+
+.ad-label {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #333;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+#ad-strip .ad-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#ad-strip .ad-more,
+#ad-more-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid #4a9eff;
+  border-radius: 999px;
+  color: #4a9eff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+#ad-strip .ad-more:hover,
+#ad-more-btn:hover {
+  background: #4a9eff;
+  color: #fff;
+}
+
+/* The after-spot chip is a control: not round like the others, not loud either */
+#ad-more-btn {
+  width: auto;
+  height: 36px;
+  background: transparent;
+  transform: none;
+}
+
+#ad-more-btn .ad-label { font-size: 10px; }
+
+@media (max-width: 480px) {
+  #ad-more-btn .ad-more-text,
+  #ad-strip .ad-more { font-size: 12px; }
+  #ad-more-btn .ad-more-text { display: none; }
+}
+
+/* Dark / embedded: the strip and chips in the pill's own quiet whites */
+body.dark-theme #ad-strip {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e0e0e0;
+}
+
+body.dark-theme .ad-label {
+  background: #e0e0e0;
+  color: #111;
+}
+
+body.iframe-mode #ad-strip .ad-more,
+body.iframe-mode #ad-more-btn {
+  border-color: rgba(255, 255, 255, 0.55);
+  color: #e0e0e0;
+}
+
+body.iframe-mode #ad-strip .ad-more:hover,
+body.iframe-mode #ad-more-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
