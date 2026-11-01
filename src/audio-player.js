@@ -37,6 +37,8 @@ async function encryptBeat(obj) {
   } catch { return null; }
 }
 
+// Listening time: ListenTimeTracker lives in listen-time.js (loaded before this file).
+
 class SnapieAudioPlayer {
   constructor() {
     this.wavesurfer = null;
@@ -55,6 +57,9 @@ class SnapieAudioPlayer {
     // audio is actually advancing. The server measures the real wall-clock
     // gap between beats, so a play can't be forged with a single request.
     this.listen = { permlink: null, sid: null, token: null, beatMs: 10000, lastBeatAt: 0, credited: false, encrypted: false, starting: false };
+    // Listening time for every play, anonymous (ListenTimeTracker above). Created
+    // once the track's permlink is known; a CID-only load has nothing to report on.
+    this.listenTime = null;
 
     this.detectMode();
     this.initializePlayer();
@@ -128,17 +133,25 @@ class SnapieAudioPlayer {
 
     // WaveSurfer event listeners
     this.wavesurfer.on('ready', () => this.onAudioReady());
-    this.wavesurfer.on('play', () => this.updatePlayPauseButton(true));
+    this.wavesurfer.on('play', () => {
+      this.updatePlayPauseButton(true);
+      if (this.listenTime) this.listenTime.start(this.wavesurfer.getMediaElement());
+    });
     this.wavesurfer.on('pause', () => {
       this.updatePlayPauseButton(false);
       // Send a final measured beat for the sliver since the last one — lets a
       // listener who pauses just past the threshold still be counted.
       this.beatOnce();
+      if (this.listenTime) this.listenTime.beat(this.wavesurfer.getMediaElement());
     });
     // A track that finishes before the first interval (e.g. a short voice
     // message) never fires an audioprocess beat — this final beat at the end
     // captures the full genuine play so short clips still count.
-    this.wavesurfer.on('finish', () => this.beatOnce());
+    this.wavesurfer.on('finish', () => {
+      this.beatOnce();
+      const media = this.wavesurfer.getMediaElement();
+      if (this.listenTime) this.listenTime.beat(media, Number.isFinite(media.duration) ? media.duration : media.currentTime);
+    });
     this.wavesurfer.on('audioprocess', () => {
       this.updateTimeDisplay();
       // audioprocess only fires while audio is genuinely advancing (not when
@@ -148,6 +161,7 @@ class SnapieAudioPlayer {
       if (L.sid && !L.credited && Date.now() - L.lastBeatAt >= L.beatMs) {
         this.beatOnce();
       }
+      if (this.listenTime) this.listenTime.tick(this.wavesurfer.getMediaElement());
     });
     this.wavesurfer.on('error', (error) => this.handleError(error));
 
@@ -212,6 +226,12 @@ class SnapieAudioPlayer {
 
     this.audioData = await response.json();
     this.durationReconciled = false;
+
+    // One track per embed: measure its listening time (anonymous).
+    if (!this.listenTime) {
+      this.listenTime = new ListenTimeTracker(this.audioData.permlink || permlink);
+      this.listenTime.attach(this.wavesurfer.getMediaElement());
+    }
 
     const gateways = [this.audioData.audioUrl, this.audioData.audioUrlFallback];
 
