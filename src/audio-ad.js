@@ -1,6 +1,7 @@
 /**
- * Sponsored audio spots in the embed: a 3Speak ticker ad, read out by the 3Speak
- * checker's text to speech and played at its booked position while the track waits
+ * Sponsored audio spots in the embed: a 3Speak ticker ad read out by the checker's
+ * text to speech, or an advertiser's own uploaded clip (no text then, `message: ''`),
+ * played at its booked position while the track waits
  * (3speakchecks routes/adServe.js, surface 'audio'). Same behaviour as the audio
  * player on 3speak.tv.
  *
@@ -50,13 +51,14 @@ function rememberSeen(storage, key, minutes) {
 function normalizeSpot(a) {
   if (!a || typeof a.audioUrl !== 'string' || !/^https:\/\//i.test(a.audioUrl)) return null;
   const durationSeconds = Number(a.durationSeconds);
-  if (!(durationSeconds > 0) || typeof a.message !== 'string' || !a.message) return null;
+  // An uploaded audio spot (the advertiser's own clip) has no text: message is ''.
+  if (!(durationSeconds > 0)) return null;
   const https = (u) => (typeof u === 'string' && /^https:\/\//i.test(u) ? u : null);
   return {
     audioUrl: a.audioUrl,
     durationSeconds,
     positionPercent: Math.min(100, Math.max(0, Number(a.positionPercent) || 0)),
-    message: a.message,
+    message: typeof a.message === 'string' ? a.message : '',
     productName: a.productName || null,
     clickUrl: https(a.clickUrl),
     shownUrl: https(a.shownUrl),

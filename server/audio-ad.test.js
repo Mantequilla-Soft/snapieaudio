@@ -139,6 +139,16 @@ test('a spot the browser refuses is dropped and the track plays on, unreported',
   assert.strictEqual(phases.at(-1), 'idle');
 });
 
+test("an advertiser's own clip has no text and still plays", async () => {
+  answer = { ...SPOT, message: '' };
+  const { ad, m } = await setup();
+  assert.strictEqual(ad.spot.message, '');
+  await m.play();
+  assert.strictEqual(adEls[0].paused, false);
+  assert.strictEqual(m.paused, true);
+  assert.strictEqual(normalizeSpot({ ...SPOT, message: undefined }).message, '');
+});
+
 test('no answer, or a bad one, means no spot', async () => {
   answer = null;
   const { m } = await setup();
