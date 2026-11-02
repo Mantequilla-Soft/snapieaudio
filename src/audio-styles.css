@@ -97,13 +97,105 @@ body.iframe-mode #audio-player-container {
   height: 56px;
 }
 
+/* Speed and volume: two small round chips stacked in one column, together as
+   tall as the play button */
+#side-chips {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+#speed-btn,
+#volume-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
 #speed-btn {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 600;
   color: white;
-  width: 52px;
-  height: 52px;
-  border-radius: 8px;
+}
+
+#volume-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The volume slider opens to the left of the chip column (centred on it, so
+   it sits right over the time display); it stays inside #volume-wrap so
+   hovering it keeps it open */
+#volume-pop {
+  display: none;
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px 0 12px;
+  margin-right: -2px;
+  border-radius: 9999px;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+@media (hover: hover) {
+  #volume-wrap:not(.mute-only):hover #volume-pop {
+    display: flex;
+  }
+}
+
+#volume-wrap:not(.mute-only).open #volume-pop {
+  display: flex;
+}
+
+/* Kept apart from the rule above: a browser without :has() drops the whole rule */
+#volume-wrap:not(.mute-only):has(:focus-visible) #volume-pop {
+  display: flex;
+}
+
+#volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 90px;
+  height: 4px;
+  border-radius: 2px;
+  cursor: pointer;
+  background: linear-gradient(to right, #4a9eff var(--fill, 100%), #ddd var(--fill, 100%));
+}
+
+#volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #4a9eff;
+}
+
+#volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #4a9eff;
+}
+
+body.dark-theme #volume-pop,
+body.iframe-mode #volume-pop {
+  background: #2b2b2b;
+  box-shadow: none;
+}
+
+body.dark-theme #volume-slider,
+body.iframe-mode #volume-slider {
+  background: linear-gradient(to right, #4a9eff var(--fill, 100%), rgba(255, 255, 255, 0.25) var(--fill, 100%));
 }
 
 #waveform-container {
@@ -178,13 +270,18 @@ body.iframe-mode.bg-transparent #audio-player-container {
 
 /* Inside the pill the speed button is a quiet round chip, so the play button
    stays the only accent */
-body.iframe-mode #speed-btn {
-  border-radius: 50%;
+body.iframe-mode #speed-btn,
+body.iframe-mode #volume-btn {
   background: rgba(255, 255, 255, 0.12);
   color: #e0e0e0;
 }
 
-body.iframe-mode #speed-btn:hover {
+body.iframe-mode #volume-btn svg {
+  fill: #e0e0e0;
+}
+
+body.iframe-mode #speed-btn:hover,
+body.iframe-mode #volume-btn:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
@@ -194,21 +291,21 @@ body.iframe-mode #speed-btn:hover {
 #tip-btn {
   text-decoration: none;
   color: white;
-  /* Same size as the speed chip beside it, in every mode */
-  width: 52px;
-  height: 52px;
+  /* A little larger than the stacked speed and volume chips beside it */
+  width: 36px;
+  height: 36px;
 }
 
 @media (max-width: 480px) {
   #tip-btn {
-    width: 48px;
-    height: 48px;
+    width: 34px;
+    height: 34px;
   }
 }
 
 .mode-compact #tip-btn {
-  width: 44px !important;
-  height: 44px !important;
+  width: 32px !important;
+  height: 32px !important;
 }
 
 #tip-btn svg {
@@ -263,10 +360,14 @@ body.dark-theme #time-display {
     height: 52px;
   }
 
+  #speed-btn,
+  #volume-btn {
+    width: 24px;
+    height: 24px;
+  }
+
   #speed-btn {
-    width: 48px;
-    height: 48px;
-    font-size: 13px;
+    font-size: 10px;
   }
 
   #time-display {
@@ -368,10 +469,19 @@ wave {
   height: 48px !important;
 }
 
+.mode-compact #speed-btn,
+.mode-compact #volume-btn {
+  width: 22px !important;
+  height: 22px !important;
+}
+
 .mode-compact #speed-btn {
-  width: 44px !important;
-  height: 44px !important;
-  font-size: 12px;
+  font-size: 10px;
+}
+
+.mode-compact #volume-btn svg {
+  width: 12px;
+  height: 12px;
 }
 
 .mode-compact #waveform-container {

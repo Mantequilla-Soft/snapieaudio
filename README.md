@@ -10,6 +10,7 @@ Lightweight HTML5 audio player for voice messages and audio content on the 3spea
 - **🔗 Dual Access Modes** - Support for both permlinks (database) and direct CID playback
 - **📱 Mobile-optimized** - Touch controls, responsive design
 - **⏩ Speed Control** - 1x, 1.5x, 2x playback speeds
+- **🔊 Volume Control** - Mute chip under the speed chip (or press M), slider on hover; the level is remembered (iOS: mute only)
 - **📈 Play Tracking** - MongoDB-based analytics and engagement metrics
 - **🔒 Rate-limited** - Protection against API abuse
 - **🎵 Content Categories** - Distinguish between ephemeral voice messages and permanent content (podcasts, songs, interviews)

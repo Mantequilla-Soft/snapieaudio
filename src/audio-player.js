@@ -99,7 +99,7 @@ class SnapieAudioPlayer {
     // Hide elements based on mode
     if (this.mode === 'minimal') {
       document.getElementById('player-header').style.display = 'none';
-      document.getElementById('speed-btn').style.display = 'none';
+      document.getElementById('side-chips').style.display = 'none';
     } else if (this.mode === 'compact') {
       document.getElementById('player-header').style.display = 'none';
     }
@@ -182,14 +182,105 @@ class SnapieAudioPlayer {
 
     playPauseBtn.addEventListener('click', () => this.togglePlayPause());
     speedBtn.addEventListener('click', () => this.toggleSpeed());
+    this.setupVolume();
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
       if (e.code === 'Space') {
         e.preventDefault();
         this.togglePlayPause();
+      } else if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && this.mode !== 'minimal') {
+        this.toggleMute();
       }
     });
+  }
+
+  /**
+   * Volume chip under the speed chip. With a mouse, hovering it opens a slider
+   * to its left and clicking it mutes; on touch screens the first tap opens the
+   * slider and a tap while it is open mutes. iOS ignores a page's volume (only
+   * the hardware buttons set it), so there the chip only mutes. The spoken ad
+   * spots follow this volume (audio-ad.js mirrors it). The level is remembered
+   * for the next track, mute is not, so nobody comes back to a silent player.
+   */
+  setupVolume() {
+    const wrap = document.getElementById('volume-wrap');
+    const btn = document.getElementById('volume-btn');
+    const slider = document.getElementById('volume-slider');
+    if (!wrap || this.mode === 'minimal') return;
+    const media = this.wavesurfer.getMediaElement();
+
+    const probe = new Audio();
+    probe.volume = 0.5;
+    this.volumeAdjustable = probe.volume === 0.5;
+    if (!this.volumeAdjustable) wrap.classList.add('mute-only');
+    const canHover = window.matchMedia('(hover: hover)').matches;
+
+    try {
+      const saved = parseFloat(localStorage.getItem('snapieaudio:volume'));
+      if (this.volumeAdjustable && saved > 0 && saved <= 1) media.volume = saved;
+    } catch { /* storage blocked in this embed */ }
+    this.lastVolume = media.volume || 1;
+
+    slider.addEventListener('input', () => {
+      const v = Number(slider.value) / 100;
+      media.volume = v;
+      media.muted = v === 0;
+    });
+    btn.addEventListener('click', () => {
+      if (this.volumeAdjustable && !canHover && !wrap.classList.contains('open')) {
+        wrap.classList.add('open');
+        return;
+      }
+      this.toggleMute();
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (!wrap.contains(e.target)) wrap.classList.remove('open');
+    });
+    // Scroll over the chip or the slider to nudge the volume
+    wrap.addEventListener('wheel', (e) => {
+      if (!this.volumeAdjustable) return;
+      e.preventDefault();
+      const v = Math.min(1, Math.max(0, (media.muted ? 0 : media.volume) + (e.deltaY < 0 ? 0.05 : -0.05)));
+      media.volume = v;
+      media.muted = v === 0;
+    }, { passive: false });
+
+    media.addEventListener('volumechange', () => this.renderVolume());
+    this.renderVolume();
+  }
+
+  toggleMute() {
+    const media = this.wavesurfer.getMediaElement();
+    if (media.muted || media.volume === 0) {
+      if (media.volume === 0) media.volume = this.lastVolume || 1;
+      media.muted = false;
+    } else {
+      media.muted = true;
+    }
+  }
+
+  renderVolume() {
+    const btn = document.getElementById('volume-btn');
+    const slider = document.getElementById('volume-slider');
+    if (!btn) return;
+    const media = this.wavesurfer.getMediaElement();
+    const level = media.muted ? 0 : media.volume;
+    if (media.volume > 0) {
+      this.lastVolume = media.volume;
+      try { localStorage.setItem('snapieaudio:volume', String(media.volume)); } catch { /* storage blocked */ }
+    }
+
+    const pct = Math.round(level * 100);
+    slider.value = String(pct);
+    slider.style.setProperty('--fill', `${pct}%`);
+    slider.setAttribute('aria-valuetext', `${pct}%`);
+    btn.querySelector('.vol-high').style.display = level >= 0.5 ? '' : 'none';
+    btn.querySelector('.vol-low').style.display = level > 0 && level < 0.5 ? '' : 'none';
+    btn.querySelector('.vol-off').style.display = level === 0 ? '' : 'none';
+    const label = level === 0 ? 'Unmute' : 'Mute';
+    btn.setAttribute('aria-label', label);
+    btn.title = `${label} (M)`;
   }
 
   /**
