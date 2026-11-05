@@ -408,24 +408,15 @@ class SnapieAudioPlayer {
       .map((x) => x.t);
   }
 
-  /** Flip the date order. The track that is playing keeps playing. */
-  toggleSort() {
+  /** Oldest or newest first. The track that is playing keeps playing. */
+  setSort(desc) {
+    if (desc === this.sortDesc) return;
     const current = this.playlist.tracks[this.trackIndex];
-    this.sortDesc = !this.sortDesc;
+    this.sortDesc = desc;
     this.playlist.tracks = this.sortedTracks(this.playlist.inOrder);
     this.trackIndex = Math.max(0, this.playlist.tracks.indexOf(current));
-    this.renderSortButton();
     this.renderTrackList();
     this.renderActiveTrack();
-  }
-
-  renderSortButton() {
-    const btn = document.getElementById('sort-btn');
-    const label = this.sortDesc ? 'Newest first' : 'Oldest first';
-    btn.querySelector('.sort-label').textContent = label;
-    btn.title = `${label} (click to flip)`;
-    btn.setAttribute('aria-label', `Sorted by date: ${label}. Click to flip.`);
-    btn.classList.toggle('is-desc', this.sortDesc);
   }
 
   /**
@@ -467,8 +458,10 @@ class SnapieAudioPlayer {
     this.setSmallImage(document.getElementById('playlist-cover'), coverSrc, 96);
     head.style.display = '';
 
-    document.getElementById('sort-btn').addEventListener('click', () => this.toggleSort());
-    this.renderSortButton();
+    const sort = document.getElementById('sort-select');
+    sort.value = this.sortDesc ? 'desc' : 'asc';
+    sort.addEventListener('change', () => this.setSort(sort.value === 'desc'));
+    document.getElementById('playlist-bar').style.display = '';
 
     document.getElementById('prev-btn').addEventListener('click', () => {
       if (this.trackIndex > 0) this.loadTrack(this.trackIndex - 1, true);

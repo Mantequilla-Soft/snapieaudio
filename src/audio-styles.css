@@ -710,9 +710,7 @@ body.playlist-mode #audio-title {
 
 #playlist-tracks {
   list-style: none;
-  margin-top: 12px;
-  border-top: 1px solid rgba(127, 127, 127, 0.25);
-  padding-top: 6px;
+  margin-top: 6px;
   overflow-y: auto;
   max-height: 320px;
 }
@@ -815,53 +813,47 @@ body.iframe-mode.playlist-mode #playlist-tracks {
   max-height: none;
 }
 
-/* Sort by date: a quiet text chip before previous / next */
-.playlist-sort {
-  display: inline-flex;
+/* The bar above the track list: a label and the date sort */
+#playlist-bar {
+  display: flex;
   align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 10px;
-  border: none;
-  border-radius: 9999px;
-  background: rgba(127, 127, 127, 0.18);
-  color: #333;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(127, 127, 127, 0.25);
+}
+
+.playlist-bar-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #777;
+}
+
+#sort-select {
   font: inherit;
   font-size: 12px;
+  color: #333;
+  background: rgba(127, 127, 127, 0.15);
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 6px;
+  padding: 4px 8px;
   cursor: pointer;
-  flex-shrink: 0;
-  white-space: nowrap;
 }
 
-.playlist-sort:hover {
-  background: rgba(127, 127, 127, 0.3);
+body.dark-theme .playlist-bar-label,
+body.iframe-mode .playlist-bar-label {
+  color: #999;
 }
 
-.playlist-sort svg {
-  fill: currentColor;
-}
-
-body.dark-theme .playlist-sort,
-body.iframe-mode .playlist-sort {
-  background: rgba(255, 255, 255, 0.12);
+body.dark-theme #sort-select,
+body.iframe-mode #sort-select {
   color: #e0e0e0;
-}
-
-body.dark-theme .playlist-sort:hover,
-body.iframe-mode .playlist-sort:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Narrow embeds: the icon alone, the label stays in the tooltip */
-@media (max-width: 420px) {
-  .playlist-sort .sort-label {
-    display: none;
-  }
-  .playlist-sort {
-    width: 30px;
-    padding: 0;
-    justify-content: center;
-  }
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color-scheme: dark;
 }
 
 .track-thumb {

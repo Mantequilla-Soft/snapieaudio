@@ -54,9 +54,33 @@ app.get('/admin/users', (req, res) => {
   res.sendFile(path.join(__dirname, '../src/admin-users.html'));
 });
 
-// Player page route
+// Player page route.
+// The player's scripts and stylesheet are asked for as `?v=<hash of their
+// contents>`. Cloudflare tells browsers to keep /js and /styles for hours, so
+// without it a deploy meets a new page with the old script (and an embed half
+// on each version). The hash changes only when a file does; computed at start,
+// which every deploy goes through.
+const PLAYER_ASSETS = ['audio-styles.css', 'listen-time.js', 'audio-ad.js', 'audio-player.js'];
+function playerPage() {
+  const crypto = require('crypto');
+  const fs = require('fs');
+  const src = path.join(__dirname, '../src');
+  const hash = crypto.createHash('sha1');
+  for (const f of PLAYER_ASSETS) hash.update(fs.readFileSync(path.join(src, f)));
+  const v = hash.digest('hex').slice(0, 10);
+  return fs.readFileSync(path.join(src, 'index.html'), 'utf8')
+    .replace(/(["'])\/(js|styles)\/([\w.-]+\.(?:js|css))\1/g, `$1/$2/$3?v=${v}$1`);
+}
+let playerHtml = null;
 app.get('/play', (req, res) => {
-  res.sendFile(path.join(__dirname, '../src/index.html'));
+  try {
+    if (!playerHtml) playerHtml = playerPage();
+    res.set('Cache-Control', 'no-cache');
+    res.type('html').send(playerHtml);
+  } catch (error) {
+    console.error('Could not version the player page:', error.message);
+    res.sendFile(path.join(__dirname, '../src/index.html'));
+  }
 });
 
 // Health check
