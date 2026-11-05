@@ -383,14 +383,70 @@ class SnapieAudioPlayer {
     const tracks = Array.isArray(data.tracks) ? data.tracks : [];
     if (tracks.length === 0) throw new Error('This playlist has no audio yet');
 
-    this.playlist = { ...data, tracks };
+    const params = new URLSearchParams(window.location.search);
+    // By date, oldest first, unless the page asks for ?sort=desc. The listener can flip it.
+    this.sortDesc = params.get('sort') === 'desc';
+    this.playlist = { ...data, inOrder: tracks, tracks: this.sortedTracks(tracks) };
     // One anonymous frequency-cap id for the whole playlist (audio-ad.js).
     this.capId = window.AudioAdSpot ? window.AudioAdSpot.newCapId() : null;
     this.renderPlaylist();
 
-    const params = new URLSearchParams(window.location.search);
     const start = Math.min(tracks.length - 1, Math.max(0, (parseInt(params.get('track'), 10) || 1) - 1));
     await this.loadTrack(start, false);
+  }
+
+  /** The tracks by publish date; undated ones last, ties keep the playlist's order. */
+  sortedTracks(tracks) {
+    const at = (t) => { const ms = Date.parse(t.created); return Number.isNaN(ms) ? null : ms; };
+    const dir = this.sortDesc ? -1 : 1;
+    return tracks
+      .map((t, i) => ({ t, i, ms: at(t) }))
+      .sort((a, b) => {
+        if (a.ms === null || b.ms === null) return (a.ms === null) - (b.ms === null) || a.i - b.i;
+        return (a.ms - b.ms) * dir || a.i - b.i;
+      })
+      .map((x) => x.t);
+  }
+
+  /** Flip the date order. The track that is playing keeps playing. */
+  toggleSort() {
+    const current = this.playlist.tracks[this.trackIndex];
+    this.sortDesc = !this.sortDesc;
+    this.playlist.tracks = this.sortedTracks(this.playlist.inOrder);
+    this.trackIndex = Math.max(0, this.playlist.tracks.indexOf(current));
+    this.renderSortButton();
+    this.renderTrackList();
+    this.renderActiveTrack();
+  }
+
+  renderSortButton() {
+    const btn = document.getElementById('sort-btn');
+    const label = this.sortDesc ? 'Newest first' : 'Oldest first';
+    btn.querySelector('.sort-label').textContent = label;
+    btn.title = `${label} (click to flip)`;
+    btn.setAttribute('aria-label', `Sorted by date: ${label}. Click to flip.`);
+    btn.classList.toggle('is-desc', this.sortDesc);
+  }
+
+  /**
+   * A small copy of a cover or thumbnail. 3Speak's own images go through
+   * 3speak.tv's resizer, anything else through Hive's image proxy. If the small
+   * copy fails the original is tried, and after that the image is hidden.
+   */
+  setSmallImage(img, url, px) {
+    const u = String(url || '').trim();
+    if (!u) { img.style.visibility = 'hidden'; return; }
+    const own = u.match(/^https?:\/\/images\.3speak\.tv\/(.+)$/i);
+    const small = own
+      ? `https://3speak.tv/img/a/${own[1].split('?')[0]}?px=${px}`
+      : /^https?:\/\//i.test(u) && !u.startsWith('https://images.hive.blog/')
+        ? `https://images.hive.blog/${px}x${px}/${u}` : u;
+    img.style.visibility = '';
+    img.onerror = () => {
+      if (img.src !== u) img.src = u;
+      else { img.onerror = null; img.style.visibility = 'hidden'; }
+    };
+    img.src = small;
   }
 
   renderPlaylist() {
@@ -406,18 +462,13 @@ class SnapieAudioPlayer {
     const count = `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`;
     document.getElementById('playlist-meta').textContent = owner ? `@${owner} · ${count}` : count;
 
-    const img = document.getElementById('playlist-cover');
     const coverSrc = cover || tracks.find((t) => t.thumbnail_url)?.thumbnail_url ||
       (owner ? `https://images.hive.blog/u/${owner}/avatar/small` : '');
-    if (coverSrc) {
-      // Hive's image proxy, so a full-size album cover is not fetched for 40 px.
-      img.src = /^https?:\/\//.test(coverSrc) && !coverSrc.startsWith('https://images.hive.blog/')
-        ? `https://images.hive.blog/96x96/${coverSrc}` : coverSrc;
-      img.onerror = () => { img.style.visibility = 'hidden'; };
-    } else {
-      img.style.visibility = 'hidden';
-    }
+    this.setSmallImage(document.getElementById('playlist-cover'), coverSrc, 96);
     head.style.display = '';
+
+    document.getElementById('sort-btn').addEventListener('click', () => this.toggleSort());
+    this.renderSortButton();
 
     document.getElementById('prev-btn').addEventListener('click', () => {
       if (this.trackIndex > 0) this.loadTrack(this.trackIndex - 1, true);
@@ -426,9 +477,14 @@ class SnapieAudioPlayer {
       if (this.trackIndex < tracks.length - 1) this.loadTrack(this.trackIndex + 1, true);
     });
 
+    this.renderTrackList();
+    document.getElementById('playlist-tracks').style.display = '';
+  }
+
+  renderTrackList() {
     const list = document.getElementById('playlist-tracks');
     list.textContent = '';
-    tracks.forEach((track, i) => {
+    this.playlist.tracks.forEach((track, i) => {
       const li = document.createElement('li');
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -436,6 +492,13 @@ class SnapieAudioPlayer {
       const num = document.createElement('span');
       num.className = 'track-num';
       num.textContent = String(i + 1);
+      const thumb = document.createElement('img');
+      thumb.className = 'track-thumb';
+      thumb.alt = '';
+      thumb.loading = 'lazy';
+      thumb.width = 32;
+      thumb.height = 32;
+      this.setSmallImage(thumb, track.thumbnail_url || this.playlist.cover, 64);
       const title = document.createElement('span');
       title.className = 'track-title';
       title.textContent = track.title;
@@ -443,7 +506,7 @@ class SnapieAudioPlayer {
       const dur = document.createElement('span');
       dur.className = 'track-duration';
       dur.textContent = track.duration ? this.formatTime(track.duration) : '';
-      btn.append(num, title, dur);
+      btn.append(num, thumb, title, dur);
       btn.addEventListener('click', () => {
         if (i === this.trackIndex) this.togglePlayPause();
         else this.loadTrack(i, true);
@@ -451,7 +514,6 @@ class SnapieAudioPlayer {
       li.appendChild(btn);
       list.appendChild(li);
     });
-    list.style.display = '';
   }
 
   /** Load track `index` of the playlist; `autoplay` once it is ready. */
@@ -480,6 +542,8 @@ class SnapieAudioPlayer {
     try {
       await this.loadByPermlink(track.permlink, () => seq === this.loadSeq);
       if (seq !== this.loadSeq) return;           // the listener already picked another
+      // The Hive post's title, as 3speak.tv shows it, not the upload's own name.
+      document.getElementById('audio-title').textContent = track.title;
       // A browser that refuses to start playback leaves the track loaded and paused.
       if (autoplay) this.wavesurfer.play()?.catch?.(() => this.updatePlayPauseButton(false));
     } catch (error) {

@@ -1,4 +1,5 @@
 const { connectDB, getAudioCollectionName } = require('../models/AudioMessage');
+const { hivePosts } = require('../utils/hivePosts');
 
 // 3speak.tv playlist ids are UUIDs; older ones are shorter slugs.
 const PLAYLIST_ID = /^[a-zA-Z0-9-]{8,64}$/;
@@ -13,8 +14,12 @@ const MAX_TRACKS = 500;
  * to its post by `post_permlink`, which a few rows store as "author/permlink".
  * Items that are videos, or audio without a published row, are left out.
  * Items by banned or hidden creators are left out too.
+ *
+ * `posts` (optional) maps "author/permlink" to the Hive post's { title, created }:
+ * the post's title wins over the upload's own name, as on 3speak.tv. Replies
+ * (album tracks) have no title of their own and keep the upload's.
  */
-function playlistTracks(playlist, audioRows, blocked = new Set()) {
+function playlistTracks(playlist, audioRows, blocked = new Set(), posts = new Map()) {
   const byPost = new Map();
   for (const row of audioRows) {
     const post = String(row.post_permlink || '').split('/').pop();
@@ -24,17 +29,35 @@ function playlistTracks(playlist, audioRows, blocked = new Set()) {
   return (playlist.items || [])
     .filter((i) => i && i.author && i.permlink && !blocked.has(i.author))
     .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-    .map((i) => byPost.get(`${i.author}/${i.permlink}`))
-    .filter((row) => row && !seen.has(row.permlink) && seen.add(row.permlink))
+    .map((i) => ({ row: byPost.get(`${i.author}/${i.permlink}`), post: posts.get(`${i.author}/${i.permlink}`) }))
+    .filter(({ row }) => row && !seen.has(row.permlink) && seen.add(row.permlink))
     .slice(0, MAX_TRACKS)
-    .map((row) => ({
-      permlink: row.permlink,
-      owner: row.owner,
-      title: row.title || row.originalFilename || 'Untitled',
-      duration: Math.round(Number(row.mp3_duration || row.duration) || 0),
-      thumbnail_url: row.thumbnail_url || null,
-      post_permlink: String(row.post_permlink || '').split('/').pop() || null,
-    }));
+    .map(({ row, post }) => {
+      const postTitle = String(post?.title || '').trim();
+      const uploaded = row.createdAt ? new Date(row.createdAt) : null;
+      return {
+        permlink: row.permlink,
+        owner: row.owner,
+        title: (postTitle && !/^re:/i.test(postTitle) ? postTitle : '') || row.title || row.originalFilename || 'Untitled',
+        duration: Math.round(Number(row.mp3_duration || row.duration) || 0),
+        thumbnail_url: row.thumbnail_url || null,
+        post_permlink: String(row.post_permlink || '').split('/').pop() || null,
+        // When it was published: the Hive post, else the upload
+        created: post?.created || (uploaded && !Number.isNaN(uploaded.getTime()) ? uploaded.toISOString() : null),
+      };
+    });
+}
+
+/** The album cover kept in the playlist's metadata (base64 JSON, or an object). */
+function albumThumbnail(metadata) {
+  try {
+    const meta = typeof metadata === 'string'
+      ? JSON.parse(Buffer.from(metadata, 'base64').toString('utf8'))
+      : metadata;
+    return meta?.album?.thumbnail || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -75,16 +98,17 @@ async function getPlaylist(req, res) {
         status: 'published',
         $or: live.map((i) => ({ owner: i.author, post_permlink: { $in: [i.permlink, `${i.author}/${i.permlink}`] } })),
       })
-      .project({ permlink: 1, owner: 1, title: 1, originalFilename: 1, duration: 1, mp3_duration: 1, thumbnail_url: 1, post_permlink: 1 })
+      .project({ permlink: 1, owner: 1, title: 1, originalFilename: 1, duration: 1, mp3_duration: 1, thumbnail_url: 1, post_permlink: 1, createdAt: 1 })
       .toArray();
+    const posts = await hivePosts(audioRows.map((r) => `${r.owner}/${String(r.post_permlink || '').split('/').pop()}`));
 
     res.setHeader('Cache-Control', 'public, max-age=300');
     return res.json({
       id,
       name: playlist.name || `${playlist.owner} playlist`,
       owner: playlist.owner,
-      cover: playlist.thumbnail || null,
-      tracks: playlistTracks({ ...playlist, items: live }, audioRows, blocked),
+      cover: playlist.thumbnail || albumThumbnail(playlist.metadata),
+      tracks: playlistTracks({ ...playlist, items: live }, audioRows, blocked, posts),
     });
   } catch (error) {
     console.error('Error loading playlist:', error);
