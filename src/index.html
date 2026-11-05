@@ -97,10 +97,21 @@
     <!-- Above the track list: sort by date (oldest first unless ?sort=desc) -->
     <div id="playlist-bar" style="display: none;">
       <span class="playlist-bar-label">Tracks</span>
-      <select id="sort-select" aria-label="Sort tracks by date">
-        <option value="asc">Oldest first</option>
-        <option value="desc">Newest first</option>
-      </select>
+      <div class="playlist-bar-tools">
+        <div id="playlist-pager" style="display: none;">
+          <button id="page-prev" type="button" class="page-btn" aria-label="Previous page" title="Previous page">
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4-4.6-4.6z"/></svg>
+          </button>
+          <span id="page-info" aria-live="polite">1 / 1</span>
+          <button id="page-next" type="button" class="page-btn" aria-label="Next page" title="Next page">
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6 8.6 7.4l4.6 4.6-4.6 4.6L10 18l6-6z"/></svg>
+          </button>
+        </div>
+        <select id="sort-select" aria-label="Sort tracks by date">
+          <option value="asc">Oldest first</option>
+          <option value="desc">Newest first</option>
+        </select>
+      </div>
     </div>
     <ol id="playlist-tracks" style="display: none;"></ol>
   </div>

@@ -720,7 +720,7 @@ body.playlist-mode #audio-title {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 7px 8px;
+  padding: 5px 8px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -857,10 +857,67 @@ body.iframe-mode #sort-select {
 }
 
 .track-thumb {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 4px;
   object-fit: cover;
   flex-shrink: 0;
   background: rgba(127, 127, 127, 0.2);
+}
+
+/* Paging, beside the sort: only when the tracks need more than one page */
+.playlist-bar-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#playlist-pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #777;
+  font-variant-numeric: tabular-nums;
+}
+
+.page-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(127, 127, 127, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.page-btn svg {
+  fill: #333;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: rgba(127, 127, 127, 0.3);
+}
+
+.page-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+body.dark-theme #playlist-pager,
+body.iframe-mode #playlist-pager {
+  color: #aaa;
+}
+
+body.dark-theme .page-btn,
+body.iframe-mode .page-btn {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+body.dark-theme .page-btn svg,
+body.iframe-mode .page-btn svg {
+  fill: #e0e0e0;
 }

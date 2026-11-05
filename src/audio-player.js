@@ -421,6 +421,7 @@ class SnapieAudioPlayer {
     this.sortDesc = desc;
     this.playlist.tracks = this.sortedTracks(this.playlist.inOrder);
     this.trackIndex = Math.max(0, this.playlist.tracks.indexOf(current));
+    this.page = Math.floor(this.trackIndex / this.pageSize);
     this.renderTrackList();
     this.renderActiveTrack();
   }
@@ -483,18 +484,78 @@ class SnapieAudioPlayer {
       if (this.trackIndex < tracks.length - 1) this.loadTrack(this.trackIndex + 1, true);
     });
 
-    this.renderTrackList();
+    this.setupPaging();
     document.getElementById('playlist-tracks').style.display = '';
+    this.renderTrackList();
+    this.refitPages();
+  }
+
+  /**
+   * Paging: as many rows per page as the list has room for, between 5 and 10.
+   * The host page decides the room by the iframe's height; a direct visit
+   * (no iframe) gets the list's max-height. Measured again whenever the frame
+   * is resized.
+   */
+  fitPageSize() {
+    const list = document.getElementById('playlist-tracks');
+    const row = list.querySelector('li');
+    const rowHeight = (row && row.offsetHeight) || 40;
+    const room = document.body.classList.contains('iframe-mode')
+      ? list.clientHeight
+      : parseFloat(getComputedStyle(list).maxHeight) || 320;
+    return Math.min(10, Math.max(5, Math.floor(room / rowHeight)));
+  }
+
+  pageCount() {
+    return Math.max(1, Math.ceil(this.playlist.tracks.length / this.pageSize));
+  }
+
+  /** Show page `page` (0-based), clamped. */
+  showPage(page) {
+    this.page = Math.min(this.pageCount() - 1, Math.max(0, page));
+    this.renderTrackList();
+    this.renderActiveTrack(false);
+  }
+
+  /** Re-measure; a different page size keeps the playing track in view. */
+  refitPages() {
+    const size = this.fitPageSize();
+    if (size === this.pageSize) return;
+    this.pageSize = size;
+    this.showPage(Math.floor(Math.max(0, this.trackIndex) / size));
+  }
+
+  setupPaging() {
+    this.pageSize = 5;
+    this.page = 0;
+    document.getElementById('page-prev').addEventListener('click', () => this.showPage(this.page - 1));
+    document.getElementById('page-next').addEventListener('click', () => this.showPage(this.page + 1));
+    const list = document.getElementById('playlist-tracks');
+    if (window.ResizeObserver) new ResizeObserver(() => this.refitPages()).observe(list);
+    else window.addEventListener('resize', () => this.refitPages());
+  }
+
+  renderPager() {
+    const pages = this.pageCount();
+    document.getElementById('playlist-pager').style.display = pages > 1 ? '' : 'none';
+    document.getElementById('page-info').textContent = `${this.page + 1} / ${pages}`;
+    document.getElementById('page-prev').disabled = this.page <= 0;
+    document.getElementById('page-next').disabled = this.page >= pages - 1;
   }
 
   renderTrackList() {
     const list = document.getElementById('playlist-tracks');
     list.textContent = '';
-    this.playlist.tracks.forEach((track, i) => {
+    list.scrollTop = 0;
+    const from = this.page * this.pageSize;
+    this.renderPager();
+    this.playlist.tracks.slice(from, from + this.pageSize).forEach((track, k) => {
+      const i = from + k;
       const li = document.createElement('li');
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'playlist-track';
+      btn.dataset.index = String(i);
       const num = document.createElement('span');
       num.className = 'track-num';
       num.textContent = String(i + 1);
@@ -502,8 +563,8 @@ class SnapieAudioPlayer {
       thumb.className = 'track-thumb';
       thumb.alt = '';
       thumb.loading = 'lazy';
-      thumb.width = 32;
-      thumb.height = 32;
+      thumb.width = 28;
+      thumb.height = 28;
       this.setSmallImage(thumb, track.thumbnail_url || this.playlist.cover, 64);
       const title = document.createElement('span');
       title.className = 'track-title';
@@ -606,16 +667,21 @@ class SnapieAudioPlayer {
     }
   }
 
-  renderActiveTrack() {
+  /** Mark the playing track; `follow` turns to its page first (a new track, not the listener browsing). */
+  renderActiveTrack(follow = true) {
     const list = document.getElementById('playlist-tracks');
+    if (follow && this.pageSize) {
+      const page = Math.floor(this.trackIndex / this.pageSize);
+      if (page !== this.page) { this.page = page; this.renderTrackList(); }
+    }
     const rows = list.querySelectorAll('.playlist-track');
-    rows.forEach((row, i) => {
-      row.classList.toggle('is-current', i === this.trackIndex);
-      if (i === this.trackIndex) row.setAttribute('aria-current', 'true');
-      else row.removeAttribute('aria-current');
+    let row = null;
+    rows.forEach((r) => {
+      const current = Number(r.dataset.index) === this.trackIndex;
+      r.classList.toggle('is-current', current);
+      if (current) { r.setAttribute('aria-current', 'true'); row = r; } else r.removeAttribute('aria-current');
     });
     // Scroll the list itself: scrollIntoView would also scroll the host page.
-    const row = rows[this.trackIndex];
     if (row) {
       const top = row.offsetTop - list.offsetTop;
       if (top < list.scrollTop) list.scrollTop = top;
