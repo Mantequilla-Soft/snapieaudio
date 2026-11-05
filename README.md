@@ -17,6 +17,11 @@ Lightweight HTML5 audio player for voice messages and audio content on the 3spea
 - **🖼️ Thumbnail Support** - Optional cover art/artwork URLs for audio entries
 - **📡 Feed API** - Public endpoints for building discovery feeds, trending pages, tag browsing, and user profiles
 - **🏷️ Tag System** - Content tagging for discovery and filtering
+- **📃 Playlist Embed** - `/play?list=<id>` plays every track of a public 3speak.tv playlist, in order, paged and sortable by date
+- **🎙️ Podcast Embed** - `/play?podcast=<id>` plays every episode of an outside show followed on 3speak.tv
+- **💸 Tip Button** - One-click link to the track owner's 3speak.tv tip page
+- **📣 Sponsored Spots** - Plays 3Speak's spoken sponsor spots or an advertiser's own uploaded audio ads in the embed
+- **⏱️ Listening Time Reporting** - Anonymously reports listening time to the 3Speak checker
 
 ## 🏗️ Architecture
 
@@ -177,6 +182,56 @@ GET /api/audio/feed?tag=music&sort=plays    # Trending music
 GET /api/audio/feed?owner=meno              # User's audio
 ```
 
+### Get a Playlist (embed)
+
+```http
+GET /api/audio/playlist/:id
+
+Response:
+{
+  "id": "<playlist id>",
+  "name": "meno playlist",
+  "owner": "meno",
+  "cover": "https://...",
+  "tracks": [
+    {
+      "permlink": "abc123xy",
+      "owner": "meno",
+      "title": "Track title (Hive post title wins over the upload's own name)",
+      "duration": 180,
+      "thumbnail_url": "https://...",
+      "post_permlink": "my-audio-snap-2026",
+      "created": "2026-02-20T10:30:00Z"
+    }
+  ]
+}
+```
+
+What `/play?list=<id>` plays: every audio item of a public 3speak.tv playlist,
+in the playlist's own order, up to 500 tracks. Private playlists and Watch
+Later answer 404, as do playlists (or items) from a banned/hidden creator.
+Video items and unpublished tracks are skipped.
+
+### Get a Podcast's Episodes (embed)
+
+```http
+GET /api/audio/podcast/:id
+
+Response:
+{
+  "id": "<feed id>",
+  "name": "Show name",
+  "tracks": [ { "title": "...", "duration": 1800, "created": "...", ... } ]
+}
+```
+
+What `/play?podcast=<id>` plays: every episode of an outside RSS show followed
+on 3speak.tv, kept by the 3Speak checker. An episode that links back to a
+published 3Speak audio post plays as that track (waveform, plays, tip button
+and sponsored spots all apply); every other episode plays its own file
+directly, with no waveform — most podcast hosts don't allow another site to
+read the raw file, only stream it.
+
 ### Track Listens (event-driven)
 
 A play is counted only after the listener has **genuinely streamed ≥66%** of
@@ -242,6 +297,22 @@ Content-Type: application/json
 
 Response:
 { "success": true, "plays": 151 }
+```
+
+### Update Metadata
+
+```http
+PATCH /api/audio/:permlink/waveform      # no auth — player self-heals after first decode
+{ "waveform": [[0.2, 0.5, ...]], "duration": 123.4 }
+
+PATCH /api/audio/:permlink/thumbnail     # requires API key + X-User header
+{ "thumbnail_url": "https://..." }
+
+PATCH /api/audio/:permlink/post-permlink # requires API key + X-User header
+{ "post_permlink": "my-audio-snap-2026" }
+
+PATCH /api/audio/:permlink               # requires API key + X-User header
+{ "title": "...", "description": "...", "tags": ["..."], "post_permlink": "..." }
 ```
 
 ## 📊 MongoDB Schema
@@ -320,6 +391,16 @@ const AudioMessage = ({ permlink }) => (
 );
 ```
 
+### Player URL Parameters
+
+| Param | Example | Plays |
+|-------|---------|-------|
+| `a` | `?a=dkojohs` | A single track by permlink |
+| `cid` | `?cid=bafybeig...` | A single track by IPFS CID directly (no database entry needed) |
+| `list` | `?list=<3speak.tv playlist id>` | Every track of a public playlist, in order, advancing automatically |
+| `podcast` | `?podcast=<feed id>` | Every episode of an outside show followed on 3speak.tv |
+| `user` | `?a=dkojohs&user=alice` | Credits the listen to this Hive username (pay-per-listen); omit for anonymous |
+
 ### What an embedder needs to do
 
 **Nothing.** Listen tracking is entirely self-contained in the player the
@@ -379,7 +460,7 @@ still credit the author at a reduced weight.
 ```bash
 npm start      # Start production server
 npm run dev    # Start development server with nodemon
-npm test       # Run tests (to be implemented)
+npm test       # Run the server/*.test.js suite (node's built-in test runner)
 ```
 
 ### Adding Test Data
@@ -406,6 +487,29 @@ db.audio_messages.insertOne({
 Test it:
 ```
 http://localhost:3000/play?a=testaud1
+```
+
+## 🚀 CI/CD
+
+GitHub Actions runs on every push/PR to `main`:
+
+- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) — `npm install`, `npm run lint` (ESLint), `npm test` on Node 18.x and 20.x. (`package-lock.json` is gitignored in this repo, so CI uses `npm install` rather than `npm ci`.)
+- **Deploy** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) — on push to `main`: re-runs lint/test, then SSHes into the production host, `git reset --hard origin/main`, `npm install --omit=dev`, and restarts the `snapieaudio` systemd service.
+
+Deploy needs these repo secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Description |
+|--------|--------------|
+| `DEPLOY_HOST` | Server hostname/IP |
+| `DEPLOY_USER` | SSH user |
+| `DEPLOY_SSH_KEY` | Private key for that user (add the matching public key to the server's `authorized_keys`) |
+| `DEPLOY_PORT` | SSH port (optional, defaults to 22) |
+| `DEPLOY_PATH` | Path to the checkout on the server (e.g. `/var/www/snapieaudio`, matching [snapieaudio.service](snapieaudio.service)) |
+
+The SSH user needs passwordless `sudo` for exactly the restart command, e.g. via `visudo`:
+
+```
+deploy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart snapieaudio
 ```
 
 ## 🔧 Configuration
@@ -465,7 +569,11 @@ db.audio_messages.createIndex({ created: -1 })
 - [x] Admin storage management panel
 
 ### Phase 3: Enhancement
-- [ ] Speed control UI
+- [x] Speed control UI
+- [x] Playlist embed
+- [x] Podcast embed
+- [x] Tip button
+- [x] Sponsored ad spots
 - [ ] Download functionality
 - [ ] Share buttons
 - [ ] Mobile app integration
@@ -473,8 +581,8 @@ db.audio_messages.createIndex({ created: -1 })
 ### Phase 4: Integration
 - [ ] React component library
 - [ ] Snapie chat integration
-- [ ] Hive blockchain support
-- [ ] Podcast RSS feeds
+- [x] Hive blockchain support (tip button, pay-per-listen crediting)
+- [x] Podcast RSS feeds (via outside podcast embed)
 
 ## 🐛 Troubleshooting
 

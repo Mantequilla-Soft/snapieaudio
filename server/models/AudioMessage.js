@@ -144,8 +144,7 @@ class AudioMessage {
         context_id: audio.context_id,
         thumbnail_url: audio.thumbnail_url || null,
         mp3_cid: audio.mp3_cid || null,
-        mp3Url: audio.mp3_cid ? `${primaryUrl.split('/ipfs/')[0]}/ipfs/${audio.mp3_cid}` : null,
-        ipfs_status: audio.ipfs_status
+        mp3Url: audio.mp3_cid ? `${primaryUrl.split('/ipfs/')[0]}/ipfs/${audio.mp3_cid}` : null
       };
     } catch (error) {
       console.error('Error finding audio:', error);

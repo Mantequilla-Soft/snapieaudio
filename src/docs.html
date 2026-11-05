@@ -311,6 +311,46 @@
         <strong>💡 Tip:</strong> Use <code>iframe=1</code> to remove all padding and prevent scrollbars. Ideal for seamless integration in chat apps or tight spaces. Embedded players get a slight dark background so the waveform stays visible on light sites; add <code>&amp;bg=transparent</code> if your page is already dark and you want it see-through.
       </div>
 
+      <h3>Playlist &amp; Podcast Embeds</h3>
+      <p>Instead of a single track, point the player at a 3speak.tv playlist or an outside podcast feed. Every track is listed under the player; a finished track moves on to the next, and the play counter, listening time, tip button and sponsored spot all follow whichever track is playing.</p>
+
+      <pre><code>&lt;!-- Every track of a public 3speak.tv playlist, in order --&gt;
+&lt;iframe src="https://audio.3speak.tv/play?list=&lt;playlist-id&gt;" width="100%" height="320"&gt;&lt;/iframe&gt;
+
+&lt;!-- Every episode of an outside show followed on 3speak.tv --&gt;
+&lt;iframe src="https://audio.3speak.tv/play?podcast=&lt;feed-id&gt;" width="100%" height="320"&gt;&lt;/iframe&gt;</code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>list</code></td>
+            <td>Public 3speak.tv playlist id. Up to 500 tracks, video items skipped.</td>
+          </tr>
+          <tr>
+            <td><code>podcast</code></td>
+            <td>Outside RSS feed id followed on 3speak.tv (kept by the 3Speak checker).</td>
+          </tr>
+          <tr>
+            <td><code>sort</code></td>
+            <td><code>asc</code> (default) or <code>desc</code> by publish date. The listener can flip it from the player.</td>
+          </tr>
+          <tr>
+            <td><code>track</code></td>
+            <td>1-based index of the track to start on (default <code>1</code>).</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="note">
+        <strong>💡 Note:</strong> A podcast episode that links back to a published 3Speak audio post plays as that track (waveform, tip button, sponsored spot included). Every other episode streams directly from its own file, with no waveform — most podcast hosts don't let another site read the raw file, only play it.
+      </div>
+
       <h2 id="upload-api">📤 Upload API</h2>
 
       <div class="endpoint">
@@ -651,6 +691,44 @@ GET /api/audio/feed?limit=20&offset=20</code></pre>
         </ul>
       </div>
 
+      <h3>Update Waveform</h3>
+
+      <div class="endpoint">
+        <span class="method method-post" style="background: #fd7e14;">PATCH</span>
+        <code>/api/audio/:permlink/waveform</code>
+      </div>
+
+      <p>Self-healing enrichment. <strong>No authentication required</strong> — the bundled player calls this itself after decoding a track for the first time, so future loads render the waveform and start streaming instantly instead of decoding from scratch.</p>
+
+      <pre><code>PATCH /api/audio/w2ehm8pr/waveform
+Content-Type: application/json
+
+{
+  "waveform": [[0.05, 0.34, 0.93, ...]],
+  "duration": 45.2
+}</code></pre>
+
+      <h3>Update Metadata</h3>
+
+      <div class="endpoint">
+        <span class="method method-post" style="background: #fd7e14;">PATCH</span>
+        <code>/api/audio/:permlink</code>
+      </div>
+
+      <p>Update title, description, tags and/or post permlink in one call. <strong>Authentication required.</strong> Only the audio owner can update their metadata.</p>
+
+      <pre><code>PATCH /api/audio/w2ehm8pr
+Content-Type: application/json
+X-API-Key: sk_your_api_key
+X-User: meno
+
+{
+  "title": "New title",
+  "description": "Updated description",
+  "tags": ["music", "live"],
+  "post_permlink": "my-audio-snap-2026"
+}</code></pre>
+
       <h3>Update Thumbnail</h3>
 
       <div class="endpoint">
@@ -721,14 +799,48 @@ X-User: meno
         </ul>
       </div>
 
-      <h3>Track Play Count</h3>
+      <h3>Track Listens (event-driven)</h3>
+
+      <p>A play is counted only after the listener has genuinely streamed ≥66% of the track — never on mere load. The bundled player opens a server-measured session and sends a heartbeat (~every 3s, plus a final one on pause/finish) while the audio is actually advancing; the server credits only the wall-clock gap it observes between beats, so a play can't be forged with a single request.</p>
+
+      <div class="endpoint">
+        <span class="method method-post">POST</span>
+        <code>/api/audio/play-start</code>
+      </div>
+
+      <pre><code>POST /api/audio/play-start
+Content-Type: application/json
+
+{ "permlink": "w2ehm8pr", "username": "alice" }   // optional; omit for anonymous
+
+Response:
+{ "sid": "...", "token": "...", "beatSeconds": 3, "threshold": 0.66, "payable": false, "encrypted": false }</code></pre>
+
+      <div class="endpoint">
+        <span class="method method-post">POST</span>
+        <code>/api/audio/play-beat</code>
+      </div>
+
+      <pre><code>POST /api/audio/play-beat
+Content-Type: application/json
+
+{ "sid": "...", "token": "..." }
+
+Response:
+{ "progress": 0.71, "credited": true, "done": true }</code></pre>
+
+      <div class="note">
+        <strong>💡 Note:</strong> <code>username</code> is only honoured when it's a valid Hive name; a listen earns the author only when the track is pay-per-listen (<code>ppl</code>), the user is logged in, and isn't the track owner. A track with missing/zero duration can't be measured: <code>play-start</code> records one full anonymous listen (deduped by IP per day) and returns <code>{ "tracked": false, "reason": "no_duration" }</code> instead of a session.
+      </div>
+
+      <h3>Track Play Count (legacy)</h3>
 
       <div class="endpoint">
         <span class="method method-post">POST</span>
         <code>/api/audio/play</code>
       </div>
 
-      <p>Increment play counter when audio starts playing.</p>
+      <p>Blind count-on-load. Superseded by <code>play-start</code>/<code>play-beat</code> above — kept for backward compatibility with external callers; the bundled player no longer calls it.</p>
 
       <pre><code>POST /api/audio/play
 Content-Type: application/json

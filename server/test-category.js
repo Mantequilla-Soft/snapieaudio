@@ -122,7 +122,7 @@ async function testCategories() {
     
     for (const audio of allTestCategories) {
       const fetched = await AudioMessage.findByPermlink(audio.permlink);
-      if (!fetched.hasOwnProperty('category')) {
+      if (!Object.hasOwn(fetched, 'category')) {
         console.log(`❌ Missing category field in response for ${audio.permlink}`);
         allHaveCategory = false;
       }

@@ -297,12 +297,12 @@ class MigrationWorker {
       return response.data;
     } catch (error) {
       if (error.code === 'ECONNABORTED') {
-        throw new Error('Supernode timeout (60s)');
+        throw new Error('Supernode timeout (60s)', { cause: error });
       }
       if (error.code === 'ECONNREFUSED') {
-        throw new Error('Supernode unreachable');
+        throw new Error('Supernode unreachable', { cause: error });
       }
-      throw new Error(`Supernode pin failed: ${error.message}`);
+      throw new Error(`Supernode pin failed: ${error.message}`, { cause: error });
     }
   }
 
