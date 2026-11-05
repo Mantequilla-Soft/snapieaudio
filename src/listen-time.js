@@ -22,10 +22,11 @@ class ListenTimeTracker {
     this.lastBeatAt = 0;
     this.lastTime = 0;
     this.starting = false;
+    this.disposed = false;
   }
 
   async start(media) {
-    if (this.sid || this.starting || !this.permlink) return;
+    if (this.disposed || this.sid || this.starting || !this.permlink) return;
     this.starting = true;
     try {
       const res = await fetch(`${this.api}/start`, {
@@ -40,7 +41,7 @@ class ListenTimeTracker {
         }),
       });
       const data = res.ok ? await res.json() : null;
-      if (data && data.sid) {
+      if (data && data.sid && !this.disposed) {
         this.sid = data.sid;
         this.token = data.token;
         this.beatMs = Math.max(2000, (Number(data.beatSeconds) || 10) * 1000);
@@ -54,7 +55,7 @@ class ListenTimeTracker {
   }
 
   beat(media, position = media.currentTime) {
-    if (!this.sid) return;
+    if (!this.sid || this.disposed) return;
     this.lastBeatAt = Date.now();
     try {
       fetch(`${this.api}/beat`, {
@@ -76,7 +77,18 @@ class ListenTimeTracker {
     if (this.sid && !media.paused && Date.now() - this.lastBeatAt >= this.beatMs) this.beat(media);
   }
 
-  /** Wire to the media element. Returns nothing; lives as long as the page. */
+  /**
+   * A playlist moving to another track: credit what was heard of this one
+   * (unless it already ended, which beat at the end), then go quiet. The
+   * listeners attach() added stay on the shared media element but do nothing.
+   */
+  dispose(media) {
+    if (this.disposed) return;
+    if (media && !media.paused && !media.ended) this.beat(media, this.lastTime || media.currentTime);
+    this.disposed = true;
+  }
+
+  /** Wire to the media element. Lives as long as the page, or until dispose(). */
   attach(media) {
     // 'seeking' fires with the NEW time already set: credit the stretch up to the jump.
     media.addEventListener('seeking', () => this.beat(media, this.lastTime));

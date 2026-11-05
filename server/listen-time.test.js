@@ -102,3 +102,25 @@ test('a failed start leaves listening alone', async () => {
   assert.strictEqual(t.sid, null);
   assert.strictEqual(t.starting, false);
 });
+
+test('dispose (a playlist moving on) credits what was heard, then stays quiet', async () => {
+  const t = new ListenTimeTracker('x');
+  const m = media();
+  t.attach(m);
+  await t.start(m);
+  m.currentTime = 7; t.tick(m);
+  t.dispose(m);
+  assert.deepStrictEqual(beats().map((b) => b.position), [7]);
+  m.fire('seeking');
+  t.beat(m);
+  await t.start(m);
+  assert.strictEqual(beats().length, 1, 'nothing after dispose, not even from the listeners on the shared element');
+});
+
+test('dispose after the track ended sends no second final beat', async () => {
+  const t = new ListenTimeTracker('x');
+  const m = media({ paused: true, ended: true });
+  await t.start(m);
+  t.dispose(m);
+  assert.strictEqual(beats().length, 0);
+});

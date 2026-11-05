@@ -9,6 +9,21 @@
 </head>
 <body>
   <div id="audio-player-container">
+    <!-- Playlist embed (/play?list=<id>): the playlist, previous / next, and below the player every track -->
+    <div id="playlist-head" style="display: none;">
+      <img id="playlist-cover" alt="" width="40" height="40">
+      <div id="playlist-info">
+        <a id="playlist-name" href="https://3speak.tv" target="_blank" rel="noopener"></a>
+        <span id="playlist-meta"></span>
+      </div>
+      <button id="prev-btn" class="control-btn playlist-skip" aria-label="Previous track" title="Previous track">
+        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+      </button>
+      <button id="next-btn" class="control-btn playlist-skip" aria-label="Next track" title="Next track">
+        <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+      </button>
+    </div>
+
     <div id="player-header">
       <span id="audio-title">Loading...</span>
     </div>
@@ -78,6 +93,8 @@
     <div id="loading-spinner" style="display: none;">
       Loading audio...
     </div>
+
+    <ol id="playlist-tracks" style="display: none;"></ol>
   </div>
 
   <script src="https://unpkg.com/wavesurfer.js@7"></script>

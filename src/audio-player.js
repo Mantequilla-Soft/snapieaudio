@@ -60,6 +60,10 @@ class SnapieAudioPlayer {
     // Listening time for every play, anonymous (ListenTimeTracker above). Created
     // once the track's permlink is known; a CID-only load has nothing to report on.
     this.listenTime = null;
+    // Playlist embed (/play?list=<id>): its tracks and the one loaded now.
+    this.playlist = null;
+    this.trackIndex = -1;
+    this.loadSeq = 0;
 
     this.detectMode();
     this.initializePlayer();
@@ -152,6 +156,10 @@ class SnapieAudioPlayer {
       this.beatOnce();
       const media = this.wavesurfer.getMediaElement();
       if (this.listenTime) this.listenTime.beat(media, Number.isFinite(media.duration) ? media.duration : media.currentTime);
+      // A playlist plays on into its next track.
+      if (this.playlist && this.trackIndex < this.playlist.tracks.length - 1) {
+        this.loadTrack(this.trackIndex + 1, true);
+      }
     });
     this.wavesurfer.on('audioprocess', () => {
       this.updateTimeDisplay();
@@ -290,11 +298,14 @@ class SnapieAudioPlayer {
     const params = new URLSearchParams(window.location.search);
     const permlink = params.get('a');
     const cid = params.get('cid');
+    const list = params.get('list');
 
     this.showLoading(true);
 
     try {
-      if (permlink) {
+      if (list) {
+        await this.loadPlaylist(list);
+      } else if (permlink) {
         await this.loadByPermlink(permlink);
       } else if (cid) {
         await this.loadByCID(cid);
@@ -309,15 +320,19 @@ class SnapieAudioPlayer {
   /**
    * Load audio by permlink (from database)
    */
-  async loadByPermlink(permlink) {
-    const response = await fetch(`/api/audio?a=${permlink}`);
+  async loadByPermlink(permlink, isCurrent = () => true) {
+    const response = await fetch(`/api/audio?a=${encodeURIComponent(permlink)}`);
 
     if (!response.ok) {
       throw new Error('Audio not found');
     }
 
-    this.audioData = await response.json();
+    const audioData = await response.json();
+    // A playlist listener can pick another track while this one is loading.
+    if (!isCurrent()) return;
+    this.audioData = audioData;
     this.durationReconciled = false;
+    this.peaksProvided = false;
 
     // One track per embed: measure its listening time (anonymous).
     if (!this.listenTime) {
@@ -336,16 +351,161 @@ class SnapieAudioPlayer {
 
     if (validPeaks && this.audioData.duration) {
       this.peaksProvided = true;
-      await this.loadAudioFileWithGateways(gateways, storedPeaks, this.audioData.duration);
+      await this.loadAudioFileWithGateways(gateways, storedPeaks, this.audioData.duration, isCurrent);
     } else {
-      await this.loadAudioFileWithGateways(gateways);
+      await this.loadAudioFileWithGateways(gateways, null, null, isCurrent);
     }
+    if (!isCurrent()) return;
+    // A new source resets the element's rate; keep the listener's speed.
+    if (this.currentSpeed !== 1) this.wavesurfer.setPlaybackRate(this.currentSpeed);
 
     document.getElementById('audio-title').textContent =
       this.audioData.title || 'Voice Message';
 
     this.setupTipButton();
     this.setupAudioAd();
+  }
+
+  /**
+   * Playlist embed: /play?list=<3speak.tv playlist id>. Every audio item of a
+   * public playlist, in its order, under the player; a finished track moves on
+   * to the next. Each track is loaded like a single embed (loadByPermlink), so
+   * the play counter, listening time, tip button and sponsored spot all follow
+   * the track that is playing. Video items are not listed: this is the audio
+   * player.
+   */
+  async loadPlaylist(id) {
+    const response = await fetch(`/api/audio/playlist/${encodeURIComponent(id)}`);
+    if (!response.ok) {
+      throw new Error(response.status === 404 ? 'Playlist not found' : 'Could not load the playlist');
+    }
+    const data = await response.json();
+    const tracks = Array.isArray(data.tracks) ? data.tracks : [];
+    if (tracks.length === 0) throw new Error('This playlist has no audio yet');
+
+    this.playlist = { ...data, tracks };
+    // One anonymous frequency-cap id for the whole playlist (audio-ad.js).
+    this.capId = window.AudioAdSpot ? window.AudioAdSpot.newCapId() : null;
+    this.renderPlaylist();
+
+    const params = new URLSearchParams(window.location.search);
+    const start = Math.min(tracks.length - 1, Math.max(0, (parseInt(params.get('track'), 10) || 1) - 1));
+    await this.loadTrack(start, false);
+  }
+
+  renderPlaylist() {
+    const { id, name, owner, cover, tracks } = this.playlist;
+    document.body.classList.add('playlist-mode');
+
+    const head = document.getElementById('playlist-head');
+    const link = document.getElementById('playlist-name');
+    const host = new URLSearchParams(window.location.search).get('tip') === 'preview'
+      ? 'https://preview.3speak.tv' : 'https://3speak.tv';
+    link.textContent = name;
+    link.href = `${host}/playlist/${encodeURIComponent(id)}`;
+    const count = `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`;
+    document.getElementById('playlist-meta').textContent = owner ? `@${owner} · ${count}` : count;
+
+    const img = document.getElementById('playlist-cover');
+    const coverSrc = cover || tracks.find((t) => t.thumbnail_url)?.thumbnail_url ||
+      (owner ? `https://images.hive.blog/u/${owner}/avatar/small` : '');
+    if (coverSrc) {
+      // Hive's image proxy, so a full-size album cover is not fetched for 40 px.
+      img.src = /^https?:\/\//.test(coverSrc) && !coverSrc.startsWith('https://images.hive.blog/')
+        ? `https://images.hive.blog/96x96/${coverSrc}` : coverSrc;
+      img.onerror = () => { img.style.visibility = 'hidden'; };
+    } else {
+      img.style.visibility = 'hidden';
+    }
+    head.style.display = '';
+
+    document.getElementById('prev-btn').addEventListener('click', () => {
+      if (this.trackIndex > 0) this.loadTrack(this.trackIndex - 1, true);
+    });
+    document.getElementById('next-btn').addEventListener('click', () => {
+      if (this.trackIndex < tracks.length - 1) this.loadTrack(this.trackIndex + 1, true);
+    });
+
+    const list = document.getElementById('playlist-tracks');
+    list.textContent = '';
+    tracks.forEach((track, i) => {
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'playlist-track';
+      const num = document.createElement('span');
+      num.className = 'track-num';
+      num.textContent = String(i + 1);
+      const title = document.createElement('span');
+      title.className = 'track-title';
+      title.textContent = track.title;
+      btn.title = track.title;
+      const dur = document.createElement('span');
+      dur.className = 'track-duration';
+      dur.textContent = track.duration ? this.formatTime(track.duration) : '';
+      btn.append(num, title, dur);
+      btn.addEventListener('click', () => {
+        if (i === this.trackIndex) this.togglePlayPause();
+        else this.loadTrack(i, true);
+      });
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+    list.style.display = '';
+  }
+
+  /** Load track `index` of the playlist; `autoplay` once it is ready. */
+  async loadTrack(index, autoplay) {
+    const track = this.playlist?.tracks[index];
+    if (!track) return;
+    const seq = ++this.loadSeq;
+    const media = this.wavesurfer.getMediaElement();
+
+    // Close out the track that was playing: its last measured beats, then
+    // retire its listening-time and ad helpers so they do not act on the next one.
+    this.beatOnce();
+    if (this.listenTime) this.listenTime.dispose(media);
+    this.listenTime = null;
+    if (this.adSpot) this.adSpot.dispose();
+    this.adSpot = null;
+    this.renderAd('idle', {});
+    const after = document.getElementById('ad-more-btn');
+    if (after) after.style.display = 'none';
+    document.getElementById('tip-btn').style.display = 'none';
+    document.getElementById('error-message').style.display = 'none';
+
+    this.trackIndex = index;
+    this.renderActiveTrack();
+    this.showLoading(true);
+    try {
+      await this.loadByPermlink(track.permlink, () => seq === this.loadSeq);
+      if (seq !== this.loadSeq) return;           // the listener already picked another
+      // A browser that refuses to start playback leaves the track loaded and paused.
+      if (autoplay) this.wavesurfer.play()?.catch?.(() => this.updatePlayPauseButton(false));
+    } catch (error) {
+      if (seq === this.loadSeq) this.handleError(error);
+    }
+  }
+
+  renderActiveTrack() {
+    const list = document.getElementById('playlist-tracks');
+    const rows = list.querySelectorAll('.playlist-track');
+    rows.forEach((row, i) => {
+      row.classList.toggle('is-current', i === this.trackIndex);
+      if (i === this.trackIndex) row.setAttribute('aria-current', 'true');
+      else row.removeAttribute('aria-current');
+    });
+    // Scroll the list itself: scrollIntoView would also scroll the host page.
+    const row = rows[this.trackIndex];
+    if (row) {
+      const top = row.offsetTop - list.offsetTop;
+      if (top < list.scrollTop) list.scrollTop = top;
+      else if (top + row.offsetHeight > list.scrollTop + list.clientHeight) {
+        list.scrollTop = top + row.offsetHeight - list.clientHeight;
+      }
+    }
+    document.getElementById('prev-btn').disabled = this.trackIndex <= 0;
+    document.getElementById('next-btn').disabled = this.trackIndex >= this.playlist.tracks.length - 1;
   }
 
   /**
@@ -361,6 +521,7 @@ class SnapieAudioPlayer {
       owner: d.owner,
       permlink: d.permlink,
       viewer: this.getListenUser(),
+      capId: this.capId || null,
       onChange: (phase, spot) => this.renderAd(phase, spot),
     });
     this.adSpot.attach(this.wavesurfer.getMediaElement());
@@ -412,7 +573,11 @@ class SnapieAudioPlayer {
     const url = `${host}/tip/@${encodeURIComponent(d.owner)}/${encodeURIComponent(d.post_permlink)}?kind=audio`;
     btn.href = url;
     btn.style.display = '';
+    // A playlist calls this for every track: the link changes, the handler is bound once.
+    if (this.tipBound) return;
+    this.tipBound = true;
     btn.addEventListener('click', (e) => {
+      const url = btn.href;
       const w = 440;
       const h = 720;
       const left = Math.max(0, Math.round((window.screen.width - w) / 2));
@@ -447,10 +612,12 @@ class SnapieAudioPlayer {
    * When peaks + duration are provided, WaveSurfer renders the waveform instantly
    * from stored data and streams the audio rather than downloading it fully first.
    */
-  async loadAudioFileWithGateways(gateways, peaks = null, duration = null) {
+  async loadAudioFileWithGateways(gateways, peaks = null, duration = null, isCurrent = () => true) {
     let lastError = null;
 
     for (let i = 0; i < gateways.length; i++) {
+      // Another playlist track was picked: no fallback for this one.
+      if (!isCurrent()) return;
       try {
         console.log(`Trying gateway ${i + 1}/${gateways.length}: ${gateways[i]}`);
         if (peaks && duration) {

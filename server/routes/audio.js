@@ -2,6 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const audioController = require('../controllers/audioController');
 const listenController = require('../controllers/listenController');
+const playlistController = require('../controllers/playlistController');
 const { validateApiKey } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
@@ -46,6 +47,12 @@ router.get('/feed', audioController.getFeed);
  * GET /api/audio?cid=<cid> - Get audio metadata by CID
  */
 router.get('/', audioController.getAudioMetadata);
+
+/**
+ * GET /api/audio/playlist/:id - A public 3speak.tv playlist's audio tracks, in
+ * the playlist's order (what /play?list=<id> plays)
+ */
+router.get('/playlist/:id', playLimiter, playlistController.getPlaylist);
 
 /**
  * POST /api/audio/play - Increment play count (LEGACY, count-on-load).
