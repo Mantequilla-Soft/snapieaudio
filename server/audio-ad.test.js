@@ -190,3 +190,11 @@ test('a spot answered after dispose is dropped', async () => {
   assert.strictEqual(await pending, null);
   assert.strictEqual(spot.spot, null);
 });
+
+test('an outside podcast episode asks by episodeId, with no owner', async () => {
+  const spot = new AudioAdSpot({ episodeId: '6ae3c77f91d7738e82354365:Igp2yMkwMxipz5kh' });
+  await spot.request();
+  const body = calls.find((c) => c.url.endsWith('/m/session')).body;
+  assert.strictEqual(body.episodeId, '6ae3c77f91d7738e82354365:Igp2yMkwMxipz5kh');
+  assert.ok(!('owner' in body) && !('permlink' in body));
+});

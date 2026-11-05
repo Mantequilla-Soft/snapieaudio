@@ -299,12 +299,13 @@ class SnapieAudioPlayer {
     const permlink = params.get('a');
     const cid = params.get('cid');
     const list = params.get('list');
+    const podcast = params.get('podcast');
 
     this.showLoading(true);
 
     try {
-      if (list) {
-        await this.loadPlaylist(list);
+      if (list || podcast) {
+        await this.loadPlaylist(list || podcast, list ? 'playlist' : 'podcast');
       } else if (permlink) {
         await this.loadByPermlink(permlink);
       } else if (cid) {
@@ -331,6 +332,10 @@ class SnapieAudioPlayer {
     // A playlist listener can pick another track while this one is loading.
     if (!isCurrent()) return;
     this.audioData = audioData;
+    if (this.flatWave) {
+      this.flatWave = false;
+      this.wavesurfer.setOptions({ normalize: true });
+    }
     this.durationReconciled = false;
     this.peaksProvided = false;
 
@@ -374,14 +379,15 @@ class SnapieAudioPlayer {
    * the track that is playing. Video items are not listed: this is the audio
    * player.
    */
-  async loadPlaylist(id) {
-    const response = await fetch(`/api/audio/playlist/${encodeURIComponent(id)}`);
+  async loadPlaylist(id, kind = 'playlist') {
+    const what = kind === 'podcast' ? 'podcast' : 'playlist';
+    const response = await fetch(`/api/audio/${what}/${encodeURIComponent(id)}`);
     if (!response.ok) {
-      throw new Error(response.status === 404 ? 'Playlist not found' : 'Could not load the playlist');
+      throw new Error(response.status === 404 ? `${what === 'podcast' ? 'Podcast' : 'Playlist'} not found` : `Could not load the ${what}`);
     }
     const data = await response.json();
     const tracks = Array.isArray(data.tracks) ? data.tracks : [];
-    if (tracks.length === 0) throw new Error('This playlist has no audio yet');
+    if (tracks.length === 0) throw new Error(what === 'podcast' ? 'This podcast has no episodes yet' : 'This playlist has no audio yet');
 
     const params = new URLSearchParams(window.location.search);
     // By date, oldest first, unless the page asks for ?sort=desc. The listener can flip it.
@@ -428,7 +434,8 @@ class SnapieAudioPlayer {
     const u = String(url || '').trim();
     if (!u) { img.style.visibility = 'hidden'; return; }
     const own = u.match(/^https?:\/\/images\.3speak\.tv\/(.+)$/i);
-    const small = own
+    // The checker's podcast art comes resized already.
+    const small = /\/podcasts\/art\//.test(u) ? u : own
       ? `https://3speak.tv/img/a/${own[1].split('?')[0]}?px=${px}`
       : /^https?:\/\//i.test(u) && !u.startsWith('https://images.hive.blog/')
         ? `https://images.hive.blog/${px}x${px}/${u}` : u;
@@ -441,7 +448,7 @@ class SnapieAudioPlayer {
   }
 
   renderPlaylist() {
-    const { id, name, owner, cover, tracks } = this.playlist;
+    const { id, name, owner, author, cover, tracks, kind } = this.playlist;
     document.body.classList.add('playlist-mode');
 
     const head = document.getElementById('playlist-head');
@@ -449,9 +456,15 @@ class SnapieAudioPlayer {
     const host = new URLSearchParams(window.location.search).get('tip') === 'preview'
       ? 'https://preview.3speak.tv' : 'https://3speak.tv';
     link.textContent = name;
-    link.href = `${host}/playlist/${encodeURIComponent(id)}`;
-    const count = `${tracks.length} ${tracks.length === 1 ? 'track' : 'tracks'}`;
-    document.getElementById('playlist-meta').textContent = owner ? `@${owner} · ${count}` : count;
+    // A podcast's page comes with it; a playlist's is built here (?tip=preview → preview).
+    link.href = this.playlist.link
+      ? this.playlist.link.replace(/^https:\/\/3speak\.tv/, host)
+      : `${host}/playlist/${encodeURIComponent(id)}`;
+    const noun = kind === 'podcast' ? ['episode', 'episodes'] : ['track', 'tracks'];
+    const count = `${tracks.length} ${tracks.length === 1 ? noun[0] : noun[1]}`;
+    const by = owner ? `@${owner}` : author;
+    document.getElementById('playlist-meta').textContent = by ? `${by} · ${count}` : count;
+    document.querySelector('.playlist-bar-label').textContent = kind === 'podcast' ? 'Episodes' : 'Tracks';
 
     const coverSrc = cover || tracks.find((t) => t.thumbnail_url)?.thumbnail_url ||
       (owner ? `https://images.hive.blog/u/${owner}/avatar/small` : '');
@@ -533,7 +546,8 @@ class SnapieAudioPlayer {
     this.renderActiveTrack();
     this.showLoading(true);
     try {
-      await this.loadByPermlink(track.permlink, () => seq === this.loadSeq);
+      if (track.kind === 'external') await this.loadExternal(track, () => seq === this.loadSeq);
+      else await this.loadByPermlink(track.permlink, () => seq === this.loadSeq);
       if (seq !== this.loadSeq) return;           // the listener already picked another
       // The Hive post's title, as 3speak.tv shows it, not the upload's own name.
       document.getElementById('audio-title').textContent = track.title;
@@ -541,6 +555,54 @@ class SnapieAudioPlayer {
       if (autoplay) this.wavesurfer.play()?.catch?.(() => this.updatePlayPauseButton(false));
     } catch (error) {
       if (seq === this.loadSeq) this.handleError(error);
+    }
+  }
+
+  /**
+   * An outside podcast episode: its own file, straight from the podcast's host.
+   * Most hosts do not let another site read the file, only play it, so there is
+   * no waveform to draw: a flat strip stands in for it and fills as it plays
+   * (stored peaks mean WaveSurfer never fetches the file). Listening time and
+   * sponsored spots go by the checker's episode id; the tip button opens the
+   * episode on 3speak.tv, where the show's Lightning tips are.
+   */
+  async loadExternal(track, isCurrent = () => true) {
+    this.audioData = { title: track.title, external: true, episodeId: track.id };
+    this.durationReconciled = true;
+    this.peaksProvided = true;
+    if (!this.flatWave) {
+      this.flatWave = true;
+      this.wavesurfer.setOptions({ normalize: false });
+    }
+    if (window.ListenTimeTracker) {
+      this.listenTime = new ListenTimeTracker(track.id, 'podcast');
+      this.listenTime.attach(this.wavesurfer.getMediaElement());
+    }
+    const peaks = [new Array(400).fill(0.16)];
+    await this.loadAudioFileWithGateways([track.audio_url], peaks, track.duration || undefined, isCurrent);
+    if (!isCurrent()) return;
+    if (this.currentSpeed !== 1) this.wavesurfer.setPlaybackRate(this.currentSpeed);
+
+    const tip = document.getElementById('tip-btn');
+    if (tip && this.mode !== 'minimal' && track.page) {
+      const host = new URLSearchParams(window.location.search).get('tip') === 'preview'
+        ? 'https://preview.3speak.tv' : 'https://3speak.tv';
+      tip.href = track.page.replace(/^https:\/\/3speak\.tv/, host);
+      tip.title = 'Tip the podcast on 3Speak';
+      tip.setAttribute('aria-label', 'Tip the podcast on 3Speak');
+      tip.style.display = '';
+      this.bindTipClick(tip);
+    }
+
+    if (window.AudioAdSpot) {
+      this.adSpot = new window.AudioAdSpot({
+        episodeId: track.id,
+        viewer: this.getListenUser(),
+        capId: this.capId || null,
+        onChange: (phase, spot) => this.renderAd(phase, spot),
+      });
+      this.adSpot.attach(this.wavesurfer.getMediaElement());
+      this.adSpot.request();
     }
   }
 
@@ -629,8 +691,14 @@ class SnapieAudioPlayer {
     const host = params.get('tip') === 'preview' ? 'https://preview.3speak.tv' : 'https://3speak.tv';
     const url = `${host}/tip/@${encodeURIComponent(d.owner)}/${encodeURIComponent(d.post_permlink)}?kind=audio`;
     btn.href = url;
+    btn.title = 'Tip the creator';
+    btn.setAttribute('aria-label', 'Tip the creator');
     btn.style.display = '';
-    // A playlist calls this for every track: the link changes, the handler is bound once.
+    this.bindTipClick(btn);
+  }
+
+  /** Opens the tip link in a popup. A playlist changes the link per track; the handler is bound once. */
+  bindTipClick(btn) {
     if (this.tipBound) return;
     this.tipBound = true;
     btn.addEventListener('click', (e) => {

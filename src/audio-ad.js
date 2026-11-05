@@ -71,13 +71,15 @@ function normalizeSpot(a) {
 class AudioAdSpot {
   /**
    * @param owner, permlink  the embed-audio track
+   * @param episodeId        or an outside podcast episode (the checker's id), no owner
    * @param viewer           optional Hive name (the page's ?user=), as the listen counter uses
    * @param onChange         (phase, spot) => void; phase 'idle' | 'playing' | 'paused' | 'heard'
    */
-  constructor({ owner, permlink, viewer = null, capId = null, onChange = () => {} }) {
+  constructor({ owner, permlink, episodeId = null, viewer = null, capId = null, onChange = () => {} }) {
     this.api = (window.SNAPIE_AD_API || 'https://checker.3speak.tv').replace(/\/+$/, '');
     this.owner = owner;
     this.permlink = permlink;
+    this.episodeId = episodeId;
     this.viewer = viewer;
     this.onChange = onChange;
     this.storage = (() => { try { return window.localStorage; } catch { return null; } })() || { getItem: () => null, setItem: () => {} };
@@ -103,7 +105,10 @@ class AudioAdSpot {
 
   /** Ask the checker. Resolves to the spot or null; never throws. */
   async request() {
-    if (!this.owner || !this.permlink || this.disposed) return null;
+    const item = this.episodeId
+      ? { episodeId: this.episodeId }
+      : this.owner && this.permlink ? { owner: this.owner, permlink: this.permlink } : null;
+    if (!item || this.disposed) return null;
     try {
       const res = await fetch(`${this.api}/m/session`, {
         method: 'POST',
@@ -111,8 +116,7 @@ class AudioAdSpot {
         body: JSON.stringify({
           surface: 'audio',
           audioSpot: true,
-          owner: this.owner,
-          permlink: this.permlink,
+          ...item,
           viewer: this.viewer || null,
           capId: this.capId,
           recentAdKeys: Object.keys(readSeen(this.storage)),

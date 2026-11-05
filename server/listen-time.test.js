@@ -124,3 +124,9 @@ test('dispose after the track ended sends no second final beat', async () => {
   t.dispose(m);
   assert.strictEqual(beats().length, 0);
 });
+
+test('an outside podcast episode is measured as kind podcast', async () => {
+  await new ListenTimeTracker('6ae3c77f91d7738e82354365:Igp2yMkwMxipz5kh', 'podcast').start(media());
+  assert.strictEqual(calls[0].body.kind, 'podcast');
+  assert.strictEqual(calls[0].body.id, '6ae3c77f91d7738e82354365:Igp2yMkwMxipz5kh');
+});

@@ -13,9 +13,11 @@
  * The checker address can be overridden with window.SNAPIE_LISTEN_API.
  */
 class ListenTimeTracker {
-  constructor(permlink) {
+  /** `kind` 'podcast' with an outside episode's id, else a 3Speak audio's permlink. */
+  constructor(permlink, kind = 'audio') {
     this.api = `${(window.SNAPIE_LISTEN_API || 'https://checker.3speak.tv').replace(/\/+$/, '')}/audio/listen`;
     this.permlink = permlink;
+    this.kind = kind === 'podcast' ? 'podcast' : 'audio';
     this.sid = null;
     this.token = null;
     this.beatMs = 10000;
@@ -33,7 +35,7 @@ class ListenTimeTracker {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          kind: 'audio',
+          kind: this.kind,
           id: this.permlink,
           duration: Number.isFinite(media.duration) && media.duration > 0 ? media.duration : undefined,
           position: media.currentTime || 0,

@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const audioController = require('../controllers/audioController');
 const listenController = require('../controllers/listenController');
 const playlistController = require('../controllers/playlistController');
+const podcastController = require('../controllers/podcastController');
 const { validateApiKey } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
@@ -53,6 +54,12 @@ router.get('/', audioController.getAudioMetadata);
  * the playlist's order (what /play?list=<id> plays)
  */
 router.get('/playlist/:id', playLimiter, playlistController.getPlaylist);
+
+/**
+ * GET /api/audio/podcast/:id - An outside podcast's episodes (a show followed on
+ * 3speak.tv, kept by the 3Speak checker): what /play?podcast=<id> plays
+ */
+router.get('/podcast/:id', playLimiter, podcastController.getPodcast);
 
 /**
  * POST /api/audio/play - Increment play count (LEGACY, count-on-load).
