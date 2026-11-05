@@ -71,17 +71,22 @@ function normalizeSpot(a) {
 class AudioAdSpot {
   /**
    * @param owner, permlink  the embed-audio track
+   * @param episodeId        or an outside podcast episode (the checker's id), no owner
    * @param viewer           optional Hive name (the page's ?user=), as the listen counter uses
    * @param onChange         (phase, spot) => void; phase 'idle' | 'playing' | 'paused' | 'heard'
    */
-  constructor({ owner, permlink, viewer = null, onChange = () => {} }) {
+  constructor({ owner, permlink, episodeId = null, viewer = null, capId = null, onChange = () => {} }) {
     this.api = (window.SNAPIE_AD_API || 'https://checker.3speak.tv').replace(/\/+$/, '');
     this.owner = owner;
     this.permlink = permlink;
+    this.episodeId = episodeId;
     this.viewer = viewer;
     this.onChange = onChange;
     this.storage = (() => { try { return window.localStorage; } catch { return null; } })() || { getItem: () => null, setItem: () => {} };
-    this.capId = Array.from((globalThis.crypto?.getRandomValues?.(new Uint8Array(12))) || [], (b) => b.toString(16).padStart(2, '0')).join('') || null;
+    // A playlist passes one capId for all its tracks, so the checker's
+    // one-spot-per-listener cooldown holds across them.
+    this.capId = capId || AudioAdSpot.newCapId();
+    this.disposed = false;
     this.spot = null;
     this.el = null;
     this.media = null;
@@ -93,9 +98,17 @@ class AudioAdSpot {
     this.watchdog = null;
   }
 
+  /** A random id for one listener's page load (the anonymous frequency cap). */
+  static newCapId() {
+    return Array.from((globalThis.crypto?.getRandomValues?.(new Uint8Array(12))) || [], (b) => b.toString(16).padStart(2, '0')).join('') || null;
+  }
+
   /** Ask the checker. Resolves to the spot or null; never throws. */
   async request() {
-    if (!this.owner || !this.permlink) return null;
+    const item = this.episodeId
+      ? { episodeId: this.episodeId }
+      : this.owner && this.permlink ? { owner: this.owner, permlink: this.permlink } : null;
+    if (!item || this.disposed) return null;
     try {
       const res = await fetch(`${this.api}/m/session`, {
         method: 'POST',
@@ -103,8 +116,7 @@ class AudioAdSpot {
         body: JSON.stringify({
           surface: 'audio',
           audioSpot: true,
-          owner: this.owner,
-          permlink: this.permlink,
+          ...item,
           viewer: this.viewer || null,
           capId: this.capId,
           recentAdKeys: Object.keys(readSeen(this.storage)),
@@ -112,7 +124,7 @@ class AudioAdSpot {
       });
       if (!res.ok) return null;
       const spot = normalizeSpot((await res.json())?.audioAd);
-      if (!spot) return null;
+      if (!spot || this.disposed) return null;
       this.spot = spot;
       // Fetching the sound records nothing, so it is loaded ahead.
       this.el = new Audio();
@@ -129,10 +141,25 @@ class AudioAdSpot {
   /** The track's media element (WaveSurfer's). Call once the track is loaded. */
   attach(media) {
     this.media = media;
-    media.addEventListener('play', () => this.onMainPlay());
-    media.addEventListener('timeupdate', () => this.onMainTime());
-    media.addEventListener('volumechange', () => { if (this.el) { this.el.volume = media.volume; this.el.muted = media.muted; } });
+    media.addEventListener('play', () => { if (!this.disposed) this.onMainPlay(); });
+    media.addEventListener('timeupdate', () => { if (!this.disposed) this.onMainTime(); });
+    media.addEventListener('volumechange', () => { if (this.el && !this.disposed) { this.el.volume = media.volume; this.el.muted = media.muted; } });
     if (this.spot) this.check();
+  }
+
+  /**
+   * A playlist moving to another track: stop a spot that is playing (it is
+   * not counted as heard, and the track is not resumed) and go quiet. The
+   * listeners attach() added stay on the shared media element but do nothing.
+   */
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    clearInterval(this.watchdog);
+    this.active = false;
+    if (this.el) {
+      try { this.el.pause(); this.el.removeAttribute('src'); this.el.load(); } catch { /* gone */ }
+    }
   }
 
   /** Play/pause of the spot for the player's own button. False when no spot runs. */

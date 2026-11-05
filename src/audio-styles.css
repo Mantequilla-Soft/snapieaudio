@@ -97,13 +97,105 @@ body.iframe-mode #audio-player-container {
   height: 56px;
 }
 
+/* Speed and volume: two small round chips stacked in one column, together as
+   tall as the play button */
+#side-chips {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+#speed-btn,
+#volume-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+}
+
 #speed-btn {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 600;
   color: white;
-  width: 52px;
-  height: 52px;
-  border-radius: 8px;
+}
+
+#volume-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The volume slider opens to the left of the chip column (centred on it, so
+   it sits right over the time display); it stays inside #volume-wrap so
+   hovering it keeps it open */
+#volume-pop {
+  display: none;
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  align-items: center;
+  height: 30px;
+  padding: 0 10px 0 12px;
+  margin-right: -2px;
+  border-radius: 9999px;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+@media (hover: hover) {
+  #volume-wrap:not(.mute-only):hover #volume-pop {
+    display: flex;
+  }
+}
+
+#volume-wrap:not(.mute-only).open #volume-pop {
+  display: flex;
+}
+
+/* Kept apart from the rule above: a browser without :has() drops the whole rule */
+#volume-wrap:not(.mute-only):has(:focus-visible) #volume-pop {
+  display: flex;
+}
+
+#volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 90px;
+  height: 4px;
+  border-radius: 2px;
+  cursor: pointer;
+  background: linear-gradient(to right, #4a9eff var(--fill, 100%), #ddd var(--fill, 100%));
+}
+
+#volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #4a9eff;
+}
+
+#volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background: #4a9eff;
+}
+
+body.dark-theme #volume-pop,
+body.iframe-mode #volume-pop {
+  background: #2b2b2b;
+  box-shadow: none;
+}
+
+body.dark-theme #volume-slider,
+body.iframe-mode #volume-slider {
+  background: linear-gradient(to right, #4a9eff var(--fill, 100%), rgba(255, 255, 255, 0.25) var(--fill, 100%));
 }
 
 #waveform-container {
@@ -178,13 +270,18 @@ body.iframe-mode.bg-transparent #audio-player-container {
 
 /* Inside the pill the speed button is a quiet round chip, so the play button
    stays the only accent */
-body.iframe-mode #speed-btn {
-  border-radius: 50%;
+body.iframe-mode #speed-btn,
+body.iframe-mode #volume-btn {
   background: rgba(255, 255, 255, 0.12);
   color: #e0e0e0;
 }
 
-body.iframe-mode #speed-btn:hover {
+body.iframe-mode #volume-btn svg {
+  fill: #e0e0e0;
+}
+
+body.iframe-mode #speed-btn:hover,
+body.iframe-mode #volume-btn:hover {
   background: rgba(255, 255, 255, 0.2);
 }
 
@@ -194,21 +291,21 @@ body.iframe-mode #speed-btn:hover {
 #tip-btn {
   text-decoration: none;
   color: white;
-  /* Same size as the speed chip beside it, in every mode */
-  width: 52px;
-  height: 52px;
+  /* A little larger than the stacked speed and volume chips beside it */
+  width: 36px;
+  height: 36px;
 }
 
 @media (max-width: 480px) {
   #tip-btn {
-    width: 48px;
-    height: 48px;
+    width: 34px;
+    height: 34px;
   }
 }
 
 .mode-compact #tip-btn {
-  width: 44px !important;
-  height: 44px !important;
+  width: 32px !important;
+  height: 32px !important;
 }
 
 #tip-btn svg {
@@ -263,10 +360,14 @@ body.dark-theme #time-display {
     height: 52px;
   }
 
+  #speed-btn,
+  #volume-btn {
+    width: 24px;
+    height: 24px;
+  }
+
   #speed-btn {
-    width: 48px;
-    height: 48px;
-    font-size: 13px;
+    font-size: 10px;
   }
 
   #time-display {
@@ -368,10 +469,19 @@ wave {
   height: 48px !important;
 }
 
+.mode-compact #speed-btn,
+.mode-compact #volume-btn {
+  width: 22px !important;
+  height: 22px !important;
+}
+
 .mode-compact #speed-btn {
-  width: 44px !important;
-  height: 44px !important;
-  font-size: 12px;
+  font-size: 10px;
+}
+
+.mode-compact #volume-btn svg {
+  width: 12px;
+  height: 12px;
 }
 
 .mode-compact #waveform-container {
@@ -511,4 +621,303 @@ body.iframe-mode #ad-strip .ad-more:hover,
 body.iframe-mode #ad-more-btn:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #fff;
+}
+
+/* ── Playlist embed (/play?list=<id>) ───────────────────────────
+   The playlist on top (cover, name, owner, previous / next), the player, and
+   every track below it in a list that scrolls inside the frame. Embedded, the
+   pill becomes a rounded card filling the iframe, so the height the host page
+   gives it decides how many tracks show. */
+#playlist-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+
+#playlist-cover {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(127, 127, 127, 0.2);
+}
+
+#playlist-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+#playlist-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#playlist-name:hover {
+  text-decoration: underline;
+}
+
+#playlist-meta {
+  font-size: 12px;
+  color: #777;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.control-btn.playlist-skip {
+  width: 30px;
+  height: 30px;
+  background: rgba(127, 127, 127, 0.18);
+}
+
+.control-btn.playlist-skip svg {
+  fill: #333;
+}
+
+.control-btn.playlist-skip:hover {
+  background: rgba(127, 127, 127, 0.3);
+}
+
+.control-btn.playlist-skip:disabled {
+  opacity: 0.35;
+  cursor: default;
+  transform: none;
+}
+
+/* The track title sits under the playlist name here, so it can be smaller */
+body.playlist-mode #player-header {
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+body.playlist-mode #audio-title {
+  font-size: 14px;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#playlist-tracks {
+  list-style: none;
+  margin-top: 6px;
+  overflow-y: auto;
+  max-height: 320px;
+}
+
+.playlist-track {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #333;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.playlist-track:hover {
+  background: rgba(127, 127, 127, 0.12);
+}
+
+.playlist-track.is-current {
+  background: rgba(74, 158, 255, 0.15);
+  color: #4a9eff;
+  font-weight: 600;
+}
+
+.track-num {
+  min-width: 18px;
+  text-align: right;
+  color: #999;
+  font-variant-numeric: tabular-nums;
+}
+
+.playlist-track.is-current .track-num {
+  color: #4a9eff;
+}
+
+.track-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-duration {
+  color: #999;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+body.dark-theme #playlist-name,
+body.dark-theme .playlist-track {
+  color: #e0e0e0;
+}
+
+body.dark-theme #playlist-meta,
+body.dark-theme .track-num,
+body.dark-theme .track-duration {
+  color: #999;
+}
+
+body.dark-theme .control-btn.playlist-skip,
+body.iframe-mode .control-btn.playlist-skip {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+body.dark-theme .control-btn.playlist-skip svg,
+body.iframe-mode .control-btn.playlist-skip svg {
+  fill: #e0e0e0;
+}
+
+body.dark-theme .playlist-track.is-current,
+body.dark-theme .playlist-track.is-current .track-num {
+  color: #6db3ff;
+}
+
+/* Embedded: a card that fills the frame; the track list takes what is left */
+body.iframe-mode.playlist-mode {
+  align-items: stretch;
+  height: 100vh;
+}
+
+body.iframe-mode.playlist-mode #audio-player-container,
+body.dark-theme.iframe-mode.playlist-mode #audio-player-container {
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 12px 14px;
+}
+
+body.iframe-mode.playlist-mode #playlist-tracks {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+/* The bar above the track list: a label and the date sort */
+#playlist-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(127, 127, 127, 0.25);
+}
+
+.playlist-bar-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #777;
+}
+
+#sort-select {
+  font: inherit;
+  font-size: 12px;
+  color: #333;
+  background: rgba(127, 127, 127, 0.15);
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+body.dark-theme .playlist-bar-label,
+body.iframe-mode .playlist-bar-label {
+  color: #999;
+}
+
+body.dark-theme #sort-select,
+body.iframe-mode #sort-select {
+  color: #e0e0e0;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color-scheme: dark;
+}
+
+.track-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: rgba(127, 127, 127, 0.2);
+}
+
+/* Paging, beside the sort: only when the tracks need more than one page */
+.playlist-bar-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#playlist-pager {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #777;
+  font-variant-numeric: tabular-nums;
+}
+
+.page-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(127, 127, 127, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.page-btn svg {
+  fill: #333;
+}
+
+.page-btn:hover:not(:disabled) {
+  background: rgba(127, 127, 127, 0.3);
+}
+
+.page-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+body.dark-theme #playlist-pager,
+body.iframe-mode #playlist-pager {
+  color: #aaa;
+}
+
+body.dark-theme .page-btn,
+body.iframe-mode .page-btn {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+body.dark-theme .page-btn svg,
+body.iframe-mode .page-btn svg {
+  fill: #e0e0e0;
 }

@@ -60,6 +60,10 @@ class SnapieAudioPlayer {
     // Listening time for every play, anonymous (ListenTimeTracker above). Created
     // once the track's permlink is known; a CID-only load has nothing to report on.
     this.listenTime = null;
+    // Playlist embed (/play?list=<id>): its tracks and the one loaded now.
+    this.playlist = null;
+    this.trackIndex = -1;
+    this.loadSeq = 0;
 
     this.detectMode();
     this.initializePlayer();
@@ -99,7 +103,7 @@ class SnapieAudioPlayer {
     // Hide elements based on mode
     if (this.mode === 'minimal') {
       document.getElementById('player-header').style.display = 'none';
-      document.getElementById('speed-btn').style.display = 'none';
+      document.getElementById('side-chips').style.display = 'none';
     } else if (this.mode === 'compact') {
       document.getElementById('player-header').style.display = 'none';
     }
@@ -152,6 +156,10 @@ class SnapieAudioPlayer {
       this.beatOnce();
       const media = this.wavesurfer.getMediaElement();
       if (this.listenTime) this.listenTime.beat(media, Number.isFinite(media.duration) ? media.duration : media.currentTime);
+      // A playlist plays on into its next track.
+      if (this.playlist && this.trackIndex < this.playlist.tracks.length - 1) {
+        this.loadTrack(this.trackIndex + 1, true);
+      }
     });
     this.wavesurfer.on('audioprocess', () => {
       this.updateTimeDisplay();
@@ -182,14 +190,105 @@ class SnapieAudioPlayer {
 
     playPauseBtn.addEventListener('click', () => this.togglePlayPause());
     speedBtn.addEventListener('click', () => this.toggleSpeed());
+    this.setupVolume();
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
       if (e.code === 'Space') {
         e.preventDefault();
         this.togglePlayPause();
+      } else if (e.code === 'KeyM' && !e.ctrlKey && !e.metaKey && !e.altKey && this.mode !== 'minimal') {
+        this.toggleMute();
       }
     });
+  }
+
+  /**
+   * Volume chip under the speed chip. With a mouse, hovering it opens a slider
+   * to its left and clicking it mutes; on touch screens the first tap opens the
+   * slider and a tap while it is open mutes. iOS ignores a page's volume (only
+   * the hardware buttons set it), so there the chip only mutes. The spoken ad
+   * spots follow this volume (audio-ad.js mirrors it). The level is remembered
+   * for the next track, mute is not, so nobody comes back to a silent player.
+   */
+  setupVolume() {
+    const wrap = document.getElementById('volume-wrap');
+    const btn = document.getElementById('volume-btn');
+    const slider = document.getElementById('volume-slider');
+    if (!wrap || this.mode === 'minimal') return;
+    const media = this.wavesurfer.getMediaElement();
+
+    const probe = new Audio();
+    probe.volume = 0.5;
+    this.volumeAdjustable = probe.volume === 0.5;
+    if (!this.volumeAdjustable) wrap.classList.add('mute-only');
+    const canHover = window.matchMedia('(hover: hover)').matches;
+
+    try {
+      const saved = parseFloat(localStorage.getItem('snapieaudio:volume'));
+      if (this.volumeAdjustable && saved > 0 && saved <= 1) media.volume = saved;
+    } catch { /* storage blocked in this embed */ }
+    this.lastVolume = media.volume || 1;
+
+    slider.addEventListener('input', () => {
+      const v = Number(slider.value) / 100;
+      media.volume = v;
+      media.muted = v === 0;
+    });
+    btn.addEventListener('click', () => {
+      if (this.volumeAdjustable && !canHover && !wrap.classList.contains('open')) {
+        wrap.classList.add('open');
+        return;
+      }
+      this.toggleMute();
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (!wrap.contains(e.target)) wrap.classList.remove('open');
+    });
+    // Scroll over the chip or the slider to nudge the volume
+    wrap.addEventListener('wheel', (e) => {
+      if (!this.volumeAdjustable) return;
+      e.preventDefault();
+      const v = Math.min(1, Math.max(0, (media.muted ? 0 : media.volume) + (e.deltaY < 0 ? 0.05 : -0.05)));
+      media.volume = v;
+      media.muted = v === 0;
+    }, { passive: false });
+
+    media.addEventListener('volumechange', () => this.renderVolume());
+    this.renderVolume();
+  }
+
+  toggleMute() {
+    const media = this.wavesurfer.getMediaElement();
+    if (media.muted || media.volume === 0) {
+      if (media.volume === 0) media.volume = this.lastVolume || 1;
+      media.muted = false;
+    } else {
+      media.muted = true;
+    }
+  }
+
+  renderVolume() {
+    const btn = document.getElementById('volume-btn');
+    const slider = document.getElementById('volume-slider');
+    if (!btn) return;
+    const media = this.wavesurfer.getMediaElement();
+    const level = media.muted ? 0 : media.volume;
+    if (media.volume > 0) {
+      this.lastVolume = media.volume;
+      try { localStorage.setItem('snapieaudio:volume', String(media.volume)); } catch { /* storage blocked */ }
+    }
+
+    const pct = Math.round(level * 100);
+    slider.value = String(pct);
+    slider.style.setProperty('--fill', `${pct}%`);
+    slider.setAttribute('aria-valuetext', `${pct}%`);
+    btn.querySelector('.vol-high').style.display = level >= 0.5 ? '' : 'none';
+    btn.querySelector('.vol-low').style.display = level > 0 && level < 0.5 ? '' : 'none';
+    btn.querySelector('.vol-off').style.display = level === 0 ? '' : 'none';
+    const label = level === 0 ? 'Unmute' : 'Mute';
+    btn.setAttribute('aria-label', label);
+    btn.title = `${label} (M)`;
   }
 
   /**
@@ -199,11 +298,15 @@ class SnapieAudioPlayer {
     const params = new URLSearchParams(window.location.search);
     const permlink = params.get('a');
     const cid = params.get('cid');
+    const list = params.get('list');
+    const podcast = params.get('podcast');
 
     this.showLoading(true);
 
     try {
-      if (permlink) {
+      if (list || podcast) {
+        await this.loadPlaylist(list || podcast, list ? 'playlist' : 'podcast');
+      } else if (permlink) {
         await this.loadByPermlink(permlink);
       } else if (cid) {
         await this.loadByCID(cid);
@@ -218,15 +321,23 @@ class SnapieAudioPlayer {
   /**
    * Load audio by permlink (from database)
    */
-  async loadByPermlink(permlink) {
-    const response = await fetch(`/api/audio?a=${permlink}`);
+  async loadByPermlink(permlink, isCurrent = () => true) {
+    const response = await fetch(`/api/audio?a=${encodeURIComponent(permlink)}`);
 
     if (!response.ok) {
       throw new Error('Audio not found');
     }
 
-    this.audioData = await response.json();
+    const audioData = await response.json();
+    // A playlist listener can pick another track while this one is loading.
+    if (!isCurrent()) return;
+    this.audioData = audioData;
+    if (this.flatWave) {
+      this.flatWave = false;
+      this.wavesurfer.setOptions({ normalize: true });
+    }
     this.durationReconciled = false;
+    this.peaksProvided = false;
 
     // One track per embed: measure its listening time (anonymous).
     if (!this.listenTime) {
@@ -245,16 +356,341 @@ class SnapieAudioPlayer {
 
     if (validPeaks && this.audioData.duration) {
       this.peaksProvided = true;
-      await this.loadAudioFileWithGateways(gateways, storedPeaks, this.audioData.duration);
+      await this.loadAudioFileWithGateways(gateways, storedPeaks, this.audioData.duration, isCurrent);
     } else {
-      await this.loadAudioFileWithGateways(gateways);
+      await this.loadAudioFileWithGateways(gateways, null, null, isCurrent);
     }
+    if (!isCurrent()) return;
+    // A new source resets the element's rate; keep the listener's speed.
+    if (this.currentSpeed !== 1) this.wavesurfer.setPlaybackRate(this.currentSpeed);
 
     document.getElementById('audio-title').textContent =
       this.audioData.title || 'Voice Message';
 
     this.setupTipButton();
     this.setupAudioAd();
+  }
+
+  /**
+   * Playlist embed: /play?list=<3speak.tv playlist id>. Every audio item of a
+   * public playlist, in its order, under the player; a finished track moves on
+   * to the next. Each track is loaded like a single embed (loadByPermlink), so
+   * the play counter, listening time, tip button and sponsored spot all follow
+   * the track that is playing. Video items are not listed: this is the audio
+   * player.
+   */
+  async loadPlaylist(id, kind = 'playlist') {
+    const what = kind === 'podcast' ? 'podcast' : 'playlist';
+    const response = await fetch(`/api/audio/${what}/${encodeURIComponent(id)}`);
+    if (!response.ok) {
+      throw new Error(response.status === 404 ? `${what === 'podcast' ? 'Podcast' : 'Playlist'} not found` : `Could not load the ${what}`);
+    }
+    const data = await response.json();
+    const tracks = Array.isArray(data.tracks) ? data.tracks : [];
+    if (tracks.length === 0) throw new Error(what === 'podcast' ? 'This podcast has no episodes yet' : 'This playlist has no audio yet');
+
+    const params = new URLSearchParams(window.location.search);
+    // By date, oldest first, unless the page asks for ?sort=desc. The listener can flip it.
+    this.sortDesc = params.get('sort') === 'desc';
+    this.playlist = { ...data, inOrder: tracks, tracks: this.sortedTracks(tracks) };
+    // One anonymous frequency-cap id for the whole playlist (audio-ad.js).
+    this.capId = window.AudioAdSpot ? window.AudioAdSpot.newCapId() : null;
+    this.renderPlaylist();
+
+    const start = Math.min(tracks.length - 1, Math.max(0, (parseInt(params.get('track'), 10) || 1) - 1));
+    await this.loadTrack(start, false);
+  }
+
+  /** The tracks by publish date; undated ones last, ties keep the playlist's order. */
+  sortedTracks(tracks) {
+    const at = (t) => { const ms = Date.parse(t.created); return Number.isNaN(ms) ? null : ms; };
+    const dir = this.sortDesc ? -1 : 1;
+    return tracks
+      .map((t, i) => ({ t, i, ms: at(t) }))
+      .sort((a, b) => {
+        if (a.ms === null || b.ms === null) return (a.ms === null) - (b.ms === null) || a.i - b.i;
+        return (a.ms - b.ms) * dir || a.i - b.i;
+      })
+      .map((x) => x.t);
+  }
+
+  /** Oldest or newest first. The track that is playing keeps playing. */
+  setSort(desc) {
+    if (desc === this.sortDesc) return;
+    const current = this.playlist.tracks[this.trackIndex];
+    this.sortDesc = desc;
+    this.playlist.tracks = this.sortedTracks(this.playlist.inOrder);
+    this.trackIndex = Math.max(0, this.playlist.tracks.indexOf(current));
+    this.page = Math.floor(this.trackIndex / this.pageSize);
+    this.renderTrackList();
+    this.renderActiveTrack();
+  }
+
+  /**
+   * A small copy of a cover or thumbnail. 3Speak's own images go through
+   * 3speak.tv's resizer, anything else through Hive's image proxy. If the small
+   * copy fails the original is tried, and after that the image is hidden.
+   */
+  setSmallImage(img, url, px) {
+    const u = String(url || '').trim();
+    if (!u) { img.style.visibility = 'hidden'; return; }
+    const own = u.match(/^https?:\/\/images\.3speak\.tv\/(.+)$/i);
+    // The checker's podcast art comes resized already.
+    const small = /\/podcasts\/art\//.test(u) ? u : own
+      ? `https://3speak.tv/img/a/${own[1].split('?')[0]}?px=${px}`
+      : /^https?:\/\//i.test(u) && !u.startsWith('https://images.hive.blog/')
+        ? `https://images.hive.blog/${px}x${px}/${u}` : u;
+    img.style.visibility = '';
+    img.onerror = () => {
+      if (img.src !== u) img.src = u;
+      else { img.onerror = null; img.style.visibility = 'hidden'; }
+    };
+    img.src = small;
+  }
+
+  renderPlaylist() {
+    const { id, name, owner, author, cover, tracks, kind } = this.playlist;
+    document.body.classList.add('playlist-mode');
+
+    const head = document.getElementById('playlist-head');
+    const link = document.getElementById('playlist-name');
+    const host = new URLSearchParams(window.location.search).get('tip') === 'preview'
+      ? 'https://preview.3speak.tv' : 'https://3speak.tv';
+    link.textContent = name;
+    // A podcast's page comes with it; a playlist's is built here (?tip=preview → preview).
+    link.href = this.playlist.link
+      ? this.playlist.link.replace(/^https:\/\/3speak\.tv/, host)
+      : `${host}/playlist/${encodeURIComponent(id)}`;
+    const noun = kind === 'podcast' ? ['episode', 'episodes'] : ['track', 'tracks'];
+    const count = `${tracks.length} ${tracks.length === 1 ? noun[0] : noun[1]}`;
+    const by = owner ? `@${owner}` : author;
+    document.getElementById('playlist-meta').textContent = by ? `${by} · ${count}` : count;
+    document.querySelector('.playlist-bar-label').textContent = kind === 'podcast' ? 'Episodes' : 'Tracks';
+
+    const coverSrc = cover || tracks.find((t) => t.thumbnail_url)?.thumbnail_url ||
+      (owner ? `https://images.hive.blog/u/${owner}/avatar/small` : '');
+    this.setSmallImage(document.getElementById('playlist-cover'), coverSrc, 96);
+    head.style.display = '';
+
+    const sort = document.getElementById('sort-select');
+    sort.value = this.sortDesc ? 'desc' : 'asc';
+    sort.addEventListener('change', () => this.setSort(sort.value === 'desc'));
+    document.getElementById('playlist-bar').style.display = '';
+
+    document.getElementById('prev-btn').addEventListener('click', () => {
+      if (this.trackIndex > 0) this.loadTrack(this.trackIndex - 1, true);
+    });
+    document.getElementById('next-btn').addEventListener('click', () => {
+      if (this.trackIndex < tracks.length - 1) this.loadTrack(this.trackIndex + 1, true);
+    });
+
+    this.setupPaging();
+    document.getElementById('playlist-tracks').style.display = '';
+    this.renderTrackList();
+    this.refitPages();
+  }
+
+  /**
+   * Paging: as many rows per page as the list has room for, between 5 and 10.
+   * The host page decides the room by the iframe's height; a direct visit
+   * (no iframe) gets the list's max-height. Measured again whenever the frame
+   * is resized.
+   */
+  fitPageSize() {
+    const list = document.getElementById('playlist-tracks');
+    const row = list.querySelector('li');
+    const rowHeight = (row && row.offsetHeight) || 40;
+    const room = document.body.classList.contains('iframe-mode')
+      ? list.clientHeight
+      : parseFloat(getComputedStyle(list).maxHeight) || 320;
+    return Math.min(10, Math.max(5, Math.floor(room / rowHeight)));
+  }
+
+  pageCount() {
+    return Math.max(1, Math.ceil(this.playlist.tracks.length / this.pageSize));
+  }
+
+  /** Show page `page` (0-based), clamped. */
+  showPage(page) {
+    this.page = Math.min(this.pageCount() - 1, Math.max(0, page));
+    this.renderTrackList();
+    this.renderActiveTrack(false);
+  }
+
+  /** Re-measure; a different page size keeps the playing track in view. */
+  refitPages() {
+    const size = this.fitPageSize();
+    if (size === this.pageSize) return;
+    this.pageSize = size;
+    this.showPage(Math.floor(Math.max(0, this.trackIndex) / size));
+  }
+
+  setupPaging() {
+    this.pageSize = 5;
+    this.page = 0;
+    document.getElementById('page-prev').addEventListener('click', () => this.showPage(this.page - 1));
+    document.getElementById('page-next').addEventListener('click', () => this.showPage(this.page + 1));
+    const list = document.getElementById('playlist-tracks');
+    if (window.ResizeObserver) new ResizeObserver(() => this.refitPages()).observe(list);
+    else window.addEventListener('resize', () => this.refitPages());
+  }
+
+  renderPager() {
+    const pages = this.pageCount();
+    document.getElementById('playlist-pager').style.display = pages > 1 ? '' : 'none';
+    document.getElementById('page-info').textContent = `${this.page + 1} / ${pages}`;
+    document.getElementById('page-prev').disabled = this.page <= 0;
+    document.getElementById('page-next').disabled = this.page >= pages - 1;
+  }
+
+  renderTrackList() {
+    const list = document.getElementById('playlist-tracks');
+    list.textContent = '';
+    list.scrollTop = 0;
+    const from = this.page * this.pageSize;
+    this.renderPager();
+    this.playlist.tracks.slice(from, from + this.pageSize).forEach((track, k) => {
+      const i = from + k;
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'playlist-track';
+      btn.dataset.index = String(i);
+      const num = document.createElement('span');
+      num.className = 'track-num';
+      num.textContent = String(i + 1);
+      const thumb = document.createElement('img');
+      thumb.className = 'track-thumb';
+      thumb.alt = '';
+      thumb.loading = 'lazy';
+      thumb.width = 28;
+      thumb.height = 28;
+      this.setSmallImage(thumb, track.thumbnail_url || this.playlist.cover, 64);
+      const title = document.createElement('span');
+      title.className = 'track-title';
+      title.textContent = track.title;
+      btn.title = track.title;
+      const dur = document.createElement('span');
+      dur.className = 'track-duration';
+      dur.textContent = track.duration ? this.formatTime(track.duration) : '';
+      btn.append(num, thumb, title, dur);
+      btn.addEventListener('click', () => {
+        if (i === this.trackIndex) this.togglePlayPause();
+        else this.loadTrack(i, true);
+      });
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+  }
+
+  /** Load track `index` of the playlist; `autoplay` once it is ready. */
+  async loadTrack(index, autoplay) {
+    const track = this.playlist?.tracks[index];
+    if (!track) return;
+    const seq = ++this.loadSeq;
+    const media = this.wavesurfer.getMediaElement();
+
+    // Close out the track that was playing: its last measured beats, then
+    // retire its listening-time and ad helpers so they do not act on the next one.
+    this.beatOnce();
+    if (this.listenTime) this.listenTime.dispose(media);
+    this.listenTime = null;
+    if (this.adSpot) this.adSpot.dispose();
+    this.adSpot = null;
+    this.renderAd('idle', {});
+    const after = document.getElementById('ad-more-btn');
+    if (after) after.style.display = 'none';
+    document.getElementById('tip-btn').style.display = 'none';
+    document.getElementById('error-message').style.display = 'none';
+
+    this.trackIndex = index;
+    this.renderActiveTrack();
+    this.showLoading(true);
+    try {
+      if (track.kind === 'external') await this.loadExternal(track, () => seq === this.loadSeq);
+      else await this.loadByPermlink(track.permlink, () => seq === this.loadSeq);
+      if (seq !== this.loadSeq) return;           // the listener already picked another
+      // The Hive post's title, as 3speak.tv shows it, not the upload's own name.
+      document.getElementById('audio-title').textContent = track.title;
+      // A browser that refuses to start playback leaves the track loaded and paused.
+      if (autoplay) this.wavesurfer.play()?.catch?.(() => this.updatePlayPauseButton(false));
+    } catch (error) {
+      if (seq === this.loadSeq) this.handleError(error);
+    }
+  }
+
+  /**
+   * An outside podcast episode: its own file, straight from the podcast's host.
+   * Most hosts do not let another site read the file, only play it, so there is
+   * no waveform to draw: a flat strip stands in for it and fills as it plays
+   * (stored peaks mean WaveSurfer never fetches the file). Listening time and
+   * sponsored spots go by the checker's episode id; the tip button opens the
+   * episode on 3speak.tv, where the show's Lightning tips are.
+   */
+  async loadExternal(track, isCurrent = () => true) {
+    this.audioData = { title: track.title, external: true, episodeId: track.id };
+    this.durationReconciled = true;
+    this.peaksProvided = true;
+    if (!this.flatWave) {
+      this.flatWave = true;
+      this.wavesurfer.setOptions({ normalize: false });
+    }
+    if (window.ListenTimeTracker) {
+      this.listenTime = new ListenTimeTracker(track.id, 'podcast');
+      this.listenTime.attach(this.wavesurfer.getMediaElement());
+    }
+    const peaks = [new Array(400).fill(0.16)];
+    await this.loadAudioFileWithGateways([track.audio_url], peaks, track.duration || undefined, isCurrent);
+    if (!isCurrent()) return;
+    if (this.currentSpeed !== 1) this.wavesurfer.setPlaybackRate(this.currentSpeed);
+
+    const tip = document.getElementById('tip-btn');
+    if (tip && this.mode !== 'minimal' && track.page) {
+      const host = new URLSearchParams(window.location.search).get('tip') === 'preview'
+        ? 'https://preview.3speak.tv' : 'https://3speak.tv';
+      tip.href = track.page.replace(/^https:\/\/3speak\.tv/, host);
+      tip.title = 'Tip the podcast on 3Speak';
+      tip.setAttribute('aria-label', 'Tip the podcast on 3Speak');
+      tip.style.display = '';
+      this.bindTipClick(tip);
+    }
+
+    if (window.AudioAdSpot) {
+      this.adSpot = new window.AudioAdSpot({
+        episodeId: track.id,
+        viewer: this.getListenUser(),
+        capId: this.capId || null,
+        onChange: (phase, spot) => this.renderAd(phase, spot),
+      });
+      this.adSpot.attach(this.wavesurfer.getMediaElement());
+      this.adSpot.request();
+    }
+  }
+
+  /** Mark the playing track; `follow` turns to its page first (a new track, not the listener browsing). */
+  renderActiveTrack(follow = true) {
+    const list = document.getElementById('playlist-tracks');
+    if (follow && this.pageSize) {
+      const page = Math.floor(this.trackIndex / this.pageSize);
+      if (page !== this.page) { this.page = page; this.renderTrackList(); }
+    }
+    const rows = list.querySelectorAll('.playlist-track');
+    let row = null;
+    rows.forEach((r) => {
+      const current = Number(r.dataset.index) === this.trackIndex;
+      r.classList.toggle('is-current', current);
+      if (current) { r.setAttribute('aria-current', 'true'); row = r; } else r.removeAttribute('aria-current');
+    });
+    // Scroll the list itself: scrollIntoView would also scroll the host page.
+    if (row) {
+      const top = row.offsetTop - list.offsetTop;
+      if (top < list.scrollTop) list.scrollTop = top;
+      else if (top + row.offsetHeight > list.scrollTop + list.clientHeight) {
+        list.scrollTop = top + row.offsetHeight - list.clientHeight;
+      }
+    }
+    document.getElementById('prev-btn').disabled = this.trackIndex <= 0;
+    document.getElementById('next-btn').disabled = this.trackIndex >= this.playlist.tracks.length - 1;
   }
 
   /**
@@ -270,6 +706,7 @@ class SnapieAudioPlayer {
       owner: d.owner,
       permlink: d.permlink,
       viewer: this.getListenUser(),
+      capId: this.capId || null,
       onChange: (phase, spot) => this.renderAd(phase, spot),
     });
     this.adSpot.attach(this.wavesurfer.getMediaElement());
@@ -320,8 +757,18 @@ class SnapieAudioPlayer {
     const host = params.get('tip') === 'preview' ? 'https://preview.3speak.tv' : 'https://3speak.tv';
     const url = `${host}/tip/@${encodeURIComponent(d.owner)}/${encodeURIComponent(d.post_permlink)}?kind=audio`;
     btn.href = url;
+    btn.title = 'Tip the creator';
+    btn.setAttribute('aria-label', 'Tip the creator');
     btn.style.display = '';
+    this.bindTipClick(btn);
+  }
+
+  /** Opens the tip link in a popup. A playlist changes the link per track; the handler is bound once. */
+  bindTipClick(btn) {
+    if (this.tipBound) return;
+    this.tipBound = true;
     btn.addEventListener('click', (e) => {
+      const url = btn.href;
       const w = 440;
       const h = 720;
       const left = Math.max(0, Math.round((window.screen.width - w) / 2));
@@ -356,10 +803,12 @@ class SnapieAudioPlayer {
    * When peaks + duration are provided, WaveSurfer renders the waveform instantly
    * from stored data and streams the audio rather than downloading it fully first.
    */
-  async loadAudioFileWithGateways(gateways, peaks = null, duration = null) {
+  async loadAudioFileWithGateways(gateways, peaks = null, duration = null, isCurrent = () => true) {
     let lastError = null;
 
     for (let i = 0; i < gateways.length; i++) {
+      // Another playlist track was picked: no fallback for this one.
+      if (!isCurrent()) return;
       try {
         console.log(`Trying gateway ${i + 1}/${gateways.length}: ${gateways[i]}`);
         if (peaks && duration) {

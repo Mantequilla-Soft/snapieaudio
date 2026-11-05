@@ -158,3 +158,43 @@ test('no answer, or a bad one, means no spot', async () => {
   assert.strictEqual(normalizeSpot({ ...SPOT, audioUrl: 'http://insecure/x.mp3' }), null);
   assert.strictEqual(normalizeSpot({ ...SPOT, clickUrl: 'javascript:alert(1)' }).clickUrl, null);
 });
+
+test('a playlist passes one capId for all its tracks', () => {
+  const a = new AudioAdSpot({ owner: 'alice', permlink: 't1', capId: 'abc123abc123abc123' });
+  const b = new AudioAdSpot({ owner: 'alice', permlink: 't2', capId: 'abc123abc123abc123' });
+  assert.strictEqual(a.capId, b.capId);
+  assert.notStrictEqual(new AudioAdSpot({ owner: 'a', permlink: 'b' }).capId, a.capId);
+});
+
+test('dispose stops a running spot and leaves the next track alone', async () => {
+  const spot = new AudioAdSpot({ owner: 'alice', permlink: 'track1' });
+  const m = media();
+  spot.attach(m);
+  await spot.request();
+  m.play();
+  assert.ok(spot.active, 'the spot started with the track');
+  spot.dispose();
+  assert.ok(!spot.active);
+  assert.ok(adEls[0].paused, 'the spot is silenced');
+  m.paused = true;
+  m.play();
+  m.fire('timeupdate');
+  assert.ok(!m.paused, 'the shared element plays the next track, not paused by the old spot');
+  assert.ok(!calls.some((c) => c.url === SPOT.shownUrl), 'a cut-off spot is not reported as heard');
+});
+
+test('a spot answered after dispose is dropped', async () => {
+  const spot = new AudioAdSpot({ owner: 'alice', permlink: 'track1' });
+  const pending = spot.request();
+  spot.dispose();
+  assert.strictEqual(await pending, null);
+  assert.strictEqual(spot.spot, null);
+});
+
+test('an outside podcast episode asks by episodeId, with no owner', async () => {
+  const spot = new AudioAdSpot({ episodeId: '6ae3c77f91d7738e82354365:Igp2yMkwMxipz5kh' });
+  await spot.request();
+  const body = calls.find((c) => c.url.endsWith('/m/session')).body;
+  assert.strictEqual(body.episodeId, '6ae3c77f91d7738e82354365:Igp2yMkwMxipz5kh');
+  assert.ok(!('owner' in body) && !('permlink' in body));
+});
