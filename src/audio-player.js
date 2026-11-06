@@ -37,6 +37,12 @@ async function encryptBeat(obj) {
   } catch { return null; }
 }
 
+// The browser-side IPFS fallback: sends CORS and pulls cold content from origin.
+const BROWSER_FALLBACK_GATEWAY = 'https://ipfs-3speak.b-cdn.net';
+// How long a gateway may stay silent (no metadata, no error) before it counts as
+// loaded anyway; a later error still moves on to the next gateway.
+const MEDIA_SETTLE_MS = 12000;
+
 // Listening time: ListenTimeTracker lives in listen-time.js (loaded before this file).
 
 class SnapieAudioPlayer {
@@ -172,7 +178,21 @@ class SnapieAudioPlayer {
       }
       if (this.listenTime) this.listenTime.tick(this.wavesurfer.getMediaElement());
     });
-    this.wavesurfer.on('error', (error) => this.handleError(error));
+    this.wavesurfer.on('error', (error) => {
+      // While a gateway is being tried, its failure is handled by the loader.
+      if (this.tryingGateway) return;
+      // A file that fails later (iOS only fetches it on play) moves on to the
+      // next gateway instead of giving up on the first one.
+      const g = this.gatewayRun;
+      if (g && g.next < g.list.length && g.isCurrent()) {
+        this.showLoading(true);
+        this.tryNextGateway()
+          .then(() => this.showLoading(false))
+          .catch((err) => { if (g.isCurrent()) this.handleError(err); });
+        return;
+      }
+      this.handleError(error);
+    });
 
     this.wavesurfer.getMediaElement().addEventListener('loadedmetadata', () => {
       if (!this.durationReconciled && this.audioData && this.audioData.permlink) {
@@ -345,7 +365,14 @@ class SnapieAudioPlayer {
       this.listenTime.attach(this.wavesurfer.getMediaElement());
     }
 
-    const gateways = [this.audioData.audioUrl, this.audioData.audioUrlFallback];
+    // ipfs-3speak.b-cdn.net (sends CORS, serves cold content) before the
+    // server's fallback, which is ipfs.io and often answers 429.
+    const cid = this.audioData.audio_cid;
+    const gateways = [
+      this.audioData.audioUrl,
+      cid ? `${BROWSER_FALLBACK_GATEWAY}/ipfs/${cid}` : null,
+      this.audioData.audioUrlFallback,
+    ];
 
     // Self-healing: if valid waveform peaks are stored, use them for instant render + streaming.
     // Guard the format: WaveSurfer v7 requires number[][] (array of channel arrays), not a flat array.
@@ -788,6 +815,7 @@ class SnapieAudioPlayer {
 
     // Try multiple gateways in order
     const gateways = [
+      `${BROWSER_FALLBACK_GATEWAY}/ipfs/${cid}`,
       `https://ipfs.io/ipfs/${cid}`,
       `https://dweb.link/ipfs/${cid}`,
       `https://cloudflare-ipfs.com/ipfs/${cid}`
@@ -804,28 +832,65 @@ class SnapieAudioPlayer {
    * from stored data and streams the audio rather than downloading it fully first.
    */
   async loadAudioFileWithGateways(gateways, peaks = null, duration = null, isCurrent = () => true) {
-    let lastError = null;
+    const list = [...new Set(gateways.filter(Boolean))];
+    this.gatewayRun = { list, next: 0, peaks, duration, isCurrent };
+    return this.tryNextGateway();
+  }
 
-    for (let i = 0; i < gateways.length; i++) {
+  /**
+   * Try the gateways left in this.gatewayRun, in order. With stored peaks,
+   * WaveSurfer's load() returns before the file is touched, so a gateway only
+   * counts once the media element has its metadata (or has neither failed nor
+   * loaded after MEDIA_SETTLE_MS: iOS waits for a tap before fetching anything).
+   */
+  async tryNextGateway() {
+    const g = this.gatewayRun;
+    let lastError = null;
+    while (g.next < g.list.length) {
       // Another playlist track was picked: no fallback for this one.
-      if (!isCurrent()) return;
+      if (!g.isCurrent()) return;
+      const i = g.next++;
+      const url = g.list[i];
+      this.tryingGateway = true;
       try {
-        console.log(`Trying gateway ${i + 1}/${gateways.length}: ${gateways[i]}`);
-        if (peaks && duration) {
-          await this.wavesurfer.load(gateways[i], peaks, duration);
+        console.log(`Trying gateway ${i + 1}/${g.list.length}: ${url}`);
+        if (g.peaks && g.duration) {
+          await this.wavesurfer.load(url, g.peaks, g.duration);
         } else {
-          await this.wavesurfer.load(gateways[i]);
+          await this.wavesurfer.load(url);
         }
-        console.log(`✓ Successfully loaded from gateway ${i + 1}`);
+        await this.mediaSettles(this.wavesurfer.getMediaElement());
+        console.log(`✓ Loaded from gateway ${i + 1}`);
         return;
       } catch (error) {
         lastError = error;
-        console.warn(`✗ Gateway ${i + 1} failed:`, error.message);
+        console.warn(`✗ Gateway ${i + 1} failed:`, error?.message || error);
+      } finally {
+        this.tryingGateway = false;
       }
     }
 
     console.error('All IPFS gateways failed', lastError);
     throw new Error('Unable to load audio from IPFS. The file may not be available on the network yet.');
+  }
+
+  /** Resolves once the element has metadata, rejects if it errors first. */
+  mediaSettles(media) {
+    if (media.error) return Promise.reject(new Error(media.error.message || `Media error ${media.error.code}`));
+    if (media.readyState >= 1) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const done = (fn, arg) => {
+        clearTimeout(timer);
+        media.removeEventListener('loadedmetadata', onMeta);
+        media.removeEventListener('error', onError);
+        fn(arg);
+      };
+      const onMeta = () => done(resolve);
+      const onError = () => done(reject, new Error(media.error?.message || `Media error ${media.error?.code ?? ''}`.trim()));
+      const timer = setTimeout(() => done(resolve), MEDIA_SETTLE_MS);
+      media.addEventListener('loadedmetadata', onMeta);
+      media.addEventListener('error', onError);
+    });
   }
 
   /**
