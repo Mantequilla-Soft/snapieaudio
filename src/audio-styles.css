@@ -592,6 +592,19 @@ wave {
   transform: none;
 }
 
+/* The compact and minimal modes force every .control-btn into a fixed circle
+   (with !important), which squashed the chip into a 40px ring with its text
+   spilling out. The chip keeps its own width in every mode. */
+.mode-compact #ad-more-btn,
+.mode-minimal #ad-more-btn {
+  width: auto !important;
+  height: 32px !important;
+  padding: 0 10px;
+}
+
+#ad-more-btn:hover,
+#ad-more-btn:active { transform: none; }
+
 #ad-more-btn .ad-label { font-size: 10px; }
 
 @media (max-width: 480px) {
@@ -611,9 +624,15 @@ body.dark-theme .ad-label {
   color: #111;
 }
 
-body.iframe-mode #ad-strip .ad-more,
-body.iframe-mode #ad-more-btn {
+body.iframe-mode #ad-strip .ad-more {
   border-color: rgba(255, 255, 255, 0.55);
+  color: #e0e0e0;
+}
+
+/* In the controls row it sits beside the tip button: the same quiet grey chip */
+body.iframe-mode #ad-more-btn {
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.12);
   color: #e0e0e0;
 }
 
