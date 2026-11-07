@@ -854,6 +854,7 @@ class SnapieAudioPlayer {
       this.tryingGateway = true;
       try {
         console.log(`Trying gateway ${i + 1}/${g.list.length}: ${url}`);
+        this.setCorsMode(url);
         if (g.peaks && g.duration) {
           await this.wavesurfer.load(url, g.peaks, g.duration);
         } else {
@@ -872,6 +873,23 @@ class SnapieAudioPlayer {
 
     console.error('All IPFS gateways failed', lastError);
     throw new Error('Unable to load audio from IPFS. The file may not be available on the network yet.');
+  }
+
+  /**
+   * IPFS gateways are fetched in CORS mode (they all send
+   * Access-Control-Allow-Origin: *). Without it the browser's ORB check sees
+   * every range request, and ipfs-audio.3speak.tv answers a range from the
+   * middle of the file without a Content-Type, which ORB blocks: Firefox
+   * skipping a big ID3 tag (cover art), or Chrome resuming after a pre-roll or
+   * a seek, then never gets the audio. Chrome retries forever without an error
+   * event, so the gateway fallback never runs and the track sits at 0:00.
+   * Outside podcast hosts mostly send no CORS headers and stay plain.
+   * A gateway that refuses CORS fails with an error and the next one is tried.
+   */
+  setCorsMode(url) {
+    const media = this.wavesurfer.getMediaElement();
+    if (/^https:\/\/[^/]+\/ipfs\//i.test(url)) media.crossOrigin = 'anonymous';
+    else media.removeAttribute('crossorigin');
   }
 
   /** Resolves once the element has metadata, rejects if it errors first. */

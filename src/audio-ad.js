@@ -129,6 +129,9 @@ class AudioAdSpot {
       // Fetching the sound records nothing, so it is loaded ahead.
       this.el = new Audio();
       this.el.preload = 'auto';
+      // CORS mode (the checker sends Access-Control-Allow-Origin: *), so the
+      // browser's ORB check never stands between the listener and the spot.
+      this.el.crossOrigin = 'anonymous';
       this.el.src = spot.audioUrl;
       this.bindAd();
       if (this.media) this.check();

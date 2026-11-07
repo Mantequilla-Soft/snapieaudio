@@ -78,6 +78,7 @@ test('asks the checker for an audio spot on this track', async () => {
     { surface: 'audio', audioSpot: true, owner: 'badadib', permlink: 'abc', viewer: 'alice', capId: undefined, recentAdKeys: [] },
   );
   assert.strictEqual(adEls[0].src, SPOT.audioUrl);
+  assert.strictEqual(adEls[0].crossOrigin, 'anonymous');
 });
 
 test('the checker address can be overridden', async () => {
