@@ -42,6 +42,8 @@ const BROWSER_FALLBACK_GATEWAY = 'https://ipfs-3speak.b-cdn.net';
 // How long a gateway may stay silent (no metadata, no error) before it counts as
 // loaded anyway; a later error still moves on to the next gateway.
 const MEDIA_SETTLE_MS = 12000;
+// Hosts whose audio is always loaded in CORS mode (setCorsMode).
+const CORS_MODE_HOSTS = ['ipfs-audio.3speak.tv'];
 
 // Listening time: ListenTimeTracker lives in listen-time.js (loaded before this file).
 
@@ -876,19 +878,22 @@ class SnapieAudioPlayer {
   }
 
   /**
-   * IPFS gateways are fetched in CORS mode (they all send
-   * Access-Control-Allow-Origin: *). Without it the browser's ORB check sees
-   * every range request, and ipfs-audio.3speak.tv answers a range from the
-   * middle of the file without a Content-Type, which ORB blocks: Firefox
-   * skipping a big ID3 tag (cover art), or Chrome resuming after a pre-roll or
-   * a seek, then never gets the audio. Chrome retries forever without an error
-   * event, so the gateway fallback never runs and the track sits at 0:00.
-   * Outside podcast hosts mostly send no CORS headers and stay plain.
-   * A gateway that refuses CORS fails with an error and the next one is tried.
+   * ipfs-audio.3speak.tv answers a range from the middle of a file without a
+   * Content-Type. Loaded plainly, the browser's ORB check blocks that response:
+   * Firefox asks for one at once to skip a big ID3 tag (cover art), Chrome after
+   * a pre-roll or a seek. Chrome then retries forever without an error event, so
+   * the gateway fallback never runs and the track sits at 0:00. In CORS mode ORB
+   * does not apply, so that host is always asked in CORS mode (it sends
+   * Access-Control-Allow-Origin: * once, as CORS requires).
+   * Every other source stays plain: ipfs-3speak.b-cdn.net sends the CORS header
+   * twice, which fails CORS, but types every range; outside podcast hosts
+   * mostly send no CORS headers at all.
    */
   setCorsMode(url) {
     const media = this.wavesurfer.getMediaElement();
-    if (/^https:\/\/[^/]+\/ipfs\//i.test(url)) media.crossOrigin = 'anonymous';
+    let host = '';
+    try { host = new URL(url).hostname; } catch { /* not a URL */ }
+    if (CORS_MODE_HOSTS.includes(host)) media.crossOrigin = 'anonymous';
     else media.removeAttribute('crossorigin');
   }
 
