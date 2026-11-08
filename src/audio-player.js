@@ -42,6 +42,8 @@ const BROWSER_FALLBACK_GATEWAY = 'https://ipfs-3speak.b-cdn.net';
 // How long a gateway may stay silent (no metadata, no error) before it counts as
 // loaded anyway; a later error still moves on to the next gateway.
 const MEDIA_SETTLE_MS = 12000;
+// Hosts whose audio is always loaded in CORS mode (setCorsMode).
+const CORS_MODE_HOSTS = ['ipfs-audio.3speak.tv'];
 
 // Listening time: ListenTimeTracker lives in listen-time.js (loaded before this file).
 
@@ -854,6 +856,7 @@ class SnapieAudioPlayer {
       this.tryingGateway = true;
       try {
         console.log(`Trying gateway ${i + 1}/${g.list.length}: ${url}`);
+        this.setCorsMode(url);
         if (g.peaks && g.duration) {
           await this.wavesurfer.load(url, g.peaks, g.duration);
         } else {
@@ -872,6 +875,26 @@ class SnapieAudioPlayer {
 
     console.error('All IPFS gateways failed', lastError);
     throw new Error('Unable to load audio from IPFS. The file may not be available on the network yet.');
+  }
+
+  /**
+   * ipfs-audio.3speak.tv answers a range from the middle of a file without a
+   * Content-Type. Loaded plainly, the browser's ORB check blocks that response:
+   * Firefox asks for one at once to skip a big ID3 tag (cover art), Chrome after
+   * a pre-roll or a seek. Chrome then retries forever without an error event, so
+   * the gateway fallback never runs and the track sits at 0:00. In CORS mode ORB
+   * does not apply, so that host is always asked in CORS mode (it sends
+   * Access-Control-Allow-Origin: * once, as CORS requires).
+   * Every other source stays plain: ipfs-3speak.b-cdn.net sends the CORS header
+   * twice, which fails CORS, but types every range; outside podcast hosts
+   * mostly send no CORS headers at all.
+   */
+  setCorsMode(url) {
+    const media = this.wavesurfer.getMediaElement();
+    let host = '';
+    try { host = new URL(url).hostname; } catch { /* not a URL */ }
+    if (CORS_MODE_HOSTS.includes(host)) media.crossOrigin = 'anonymous';
+    else media.removeAttribute('crossorigin');
   }
 
   /** Resolves once the element has metadata, rejects if it errors first. */
