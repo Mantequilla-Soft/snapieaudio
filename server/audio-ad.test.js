@@ -198,3 +198,168 @@ test('an outside podcast episode asks by episodeId, with no owner', async () => 
   assert.strictEqual(body.episodeId, '6ae3c77f91d7738e82354365:Igp2yMkwMxipz5kh');
   assert.ok(!('owner' in body) && !('permlink' in body));
 });
+
+// The checker's answer held back until the test lets it through.
+function slowAnswer() {
+  let let_through;
+  const gate = new Promise((r) => { let_through = r; });
+  global.fetch = async (url, opts) => {
+    calls.push({ url, body: opts.body ? JSON.parse(opts.body) : null, keepalive: !!opts.keepalive });
+    if (url.endsWith('/m/session')) {
+      const res = await gate;
+      if (res instanceof Error) throw res;
+      return res;
+    }
+    return { ok: true, json: async () => ({}) };
+  };
+  return (res = { ok: true, json: async () => ({ ad: null, audioAd: answer }) }) => let_through(res);
+}
+
+function early(extra = {}) {
+  const phases = [];
+  const m = media();
+  const ad = new AudioAdSpot({ owner: 'badadib', permlink: 'abc', onChange: (p) => phases.push(p), ...extra });
+  ad.attach(m);
+  const asked = ad.request();
+  return { ad, m, phases, asked };
+}
+
+test('a play before the answer is held, and a pre-roll then comes first', async () => {
+  const answerNow = slowAnswer();
+  const { ad, m, phases, asked } = early();
+  m.play();
+  assert.strictEqual(m.paused, true, 'none of the track is heard while the answer is out');
+  assert.strictEqual(ad.held, true);
+  assert.strictEqual(phases.at(-1), 'waiting');
+  answerNow();
+  await asked;
+  assert.strictEqual(ad.active, true);
+  assert.strictEqual(adEls[0].paused, false, 'the spot plays');
+  assert.strictEqual(m.paused, true);
+  adEls[0].ended = true; adEls[0].fire('ended');
+  assert.strictEqual(m.paused, false, 'the track plays after the spot');
+  assert.strictEqual(m.currentTime, 0);
+});
+
+test('a held play goes on at once when there is no spot', async () => {
+  answer = null;
+  const answerNow = slowAnswer();
+  const { ad, m, asked } = early();
+  m.play();
+  assert.strictEqual(m.paused, true);
+  answerNow();
+  await asked;
+  assert.strictEqual(m.paused, false, 'the track plays');
+  assert.strictEqual(ad.held, false);
+  assert.strictEqual(adEls.length, 0);
+});
+
+test('a held play goes on when the checker fails or answers badly', async () => {
+  for (const res of [new Error('offline'), { ok: false, json: async () => ({}) }, { ok: true, json: async () => { throw new Error('bad json'); } }]) {
+    const answerNow = slowAnswer();
+    const { m, asked } = early();
+    m.play();
+    answerNow(res);
+    await asked;
+    assert.strictEqual(m.paused, false);
+  }
+});
+
+test('a held play goes on at once for a later spot, which still waits for its position', async () => {
+  answer.positionPercent = 50;
+  const answerNow = slowAnswer();
+  const { ad, m, asked } = early();
+  m.play();
+  answerNow();
+  await asked;
+  assert.strictEqual(m.paused, false);
+  assert.strictEqual(ad.active, false);
+  m.currentTime = 300.5; m.fire('timeupdate');
+  assert.strictEqual(ad.active, true);
+});
+
+test('no answer in time: the track plays, and a late pre-roll rewinds it', async () => {
+  const answerNow = slowAnswer();
+  const { ad, m, asked } = early({ holdMs: 20 });
+  m.play();
+  assert.strictEqual(m.paused, true);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.strictEqual(m.paused, false, 'fails open');
+  m.currentTime = 1.2;
+  answerNow();
+  await asked;
+  assert.strictEqual(ad.active, true);
+  adEls[0].ended = true; adEls[0].fire('ended');
+  assert.strictEqual(m.currentTime, 0);
+  assert.strictEqual(m.paused, false);
+});
+
+test('pause during the hold: nothing starts when the answer comes', async () => {
+  answer = null;
+  const answerNow = slowAnswer();
+  const { ad, m, phases, asked } = early();
+  m.play();
+  assert.strictEqual(ad.toggle(), true);
+  assert.strictEqual(phases.at(-1), 'cancelled');
+  answerNow();
+  await asked;
+  assert.strictEqual(m.paused, true);
+  // A new play after the answer just plays.
+  m.play();
+  assert.strictEqual(m.paused, false);
+});
+
+test('pause during the hold, then play again: held again, and the pre-roll comes first', async () => {
+  const answerNow = slowAnswer();
+  const { ad, m, asked } = early();
+  m.play();
+  ad.toggle();
+  m.play();
+  assert.strictEqual(ad.held, true);
+  assert.strictEqual(m.paused, true);
+  answerNow();
+  await asked;
+  assert.strictEqual(ad.active, true);
+});
+
+test('a play already running when the request goes out is held too', async () => {
+  const answerNow = slowAnswer();
+  const m = media();
+  const ad = new AudioAdSpot({ owner: 'badadib', permlink: 'abc' });
+  ad.attach(m);
+  m.paused = false;   // a playlist's next track, already started
+  const asked = ad.request();
+  assert.strictEqual(m.paused, true);
+  answerNow();
+  await asked;
+  assert.strictEqual(ad.active, true);
+});
+
+test('a play further into the track is not held', async () => {
+  slowAnswer();
+  const { ad, m } = early();
+  m.currentTime = 42;
+  m.play();
+  assert.strictEqual(m.paused, false);
+  assert.strictEqual(ad.held, false);
+});
+
+test('dispose during the hold resumes nothing on the shared element', async () => {
+  const answerNow = slowAnswer();
+  const { ad, m, asked } = early();
+  m.play();
+  ad.dispose();
+  answerNow();
+  await asked;
+  assert.strictEqual(m.paused, true, 'the next track decides for itself');
+  m.play();
+  assert.strictEqual(m.paused, false, 'and the old spot no longer holds it');
+});
+
+test('the answer in before the first play: no hold, the pre-roll starts on play', async () => {
+  const { ad, m } = await setup();
+  assert.strictEqual(ad.pending, false);
+  await m.play();
+  assert.strictEqual(ad.held, false);
+  assert.strictEqual(ad.active, true);
+});

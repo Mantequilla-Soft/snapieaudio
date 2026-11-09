@@ -151,7 +151,8 @@ class SnapieAudioPlayer {
       if (this.listenTime) this.listenTime.start(this.wavesurfer.getMediaElement());
     });
     this.wavesurfer.on('pause', () => {
-      if (!this.adSpot?.active) this.updatePlayPauseButton(false);
+      // A play held for the checker's answer still shows as playing (audio-ad.js).
+      if (!this.adSpot?.active && !this.adSpot?.held) this.updatePlayPauseButton(false);
       // Send a final measured beat for the sliver since the last one — lets a
       // listener who pauses just past the threshold still be counted.
       this.beatOnce();
@@ -367,6 +368,10 @@ class SnapieAudioPlayer {
       this.listenTime.attach(this.wavesurfer.getMediaElement());
     }
 
+    // Ask for the sponsored spot while the file loads, so a pre-roll is known
+    // before the first play and a play waits for the answer as briefly as possible.
+    this.setupAudioAd();
+
     // ipfs-3speak.b-cdn.net (sends CORS, serves cold content) before the
     // server's fallback, which is ipfs.io and often answers 429.
     const cid = this.audioData.audio_cid;
@@ -397,7 +402,6 @@ class SnapieAudioPlayer {
       this.audioData.title || 'Voice Message';
 
     this.setupTipButton();
-    this.setupAudioAd();
   }
 
   /**
@@ -642,7 +646,8 @@ class SnapieAudioPlayer {
       // The Hive post's title, as 3speak.tv shows it, not the upload's own name.
       document.getElementById('audio-title').textContent = track.title;
       // A browser that refuses to start playback leaves the track loaded and paused.
-      if (autoplay) this.wavesurfer.play()?.catch?.(() => this.updatePlayPauseButton(false));
+      // A play held for the checker's answer rejects too; the hold resumes it.
+      if (autoplay) this.wavesurfer.play()?.catch?.(() => { if (!this.adSpot?.held) this.updatePlayPauseButton(false); });
     } catch (error) {
       if (seq === this.loadSeq) this.handleError(error);
     }
@@ -668,6 +673,17 @@ class SnapieAudioPlayer {
       this.listenTime = new ListenTimeTracker(track.id, 'podcast');
       this.listenTime.attach(this.wavesurfer.getMediaElement());
     }
+    // The sponsored spot is asked for while the file loads (see loadByPermlink).
+    if (window.AudioAdSpot) {
+      this.adSpot = new window.AudioAdSpot({
+        episodeId: track.id,
+        viewer: this.getListenUser(),
+        capId: this.capId || null,
+        onChange: (phase, spot) => this.renderAd(phase, spot),
+      });
+      this.adSpot.attach(this.wavesurfer.getMediaElement());
+      this.adSpot.request();
+    }
     const peaks = [new Array(400).fill(0.16)];
     await this.loadAudioFileWithGateways([track.audio_url], peaks, track.duration || undefined, isCurrent);
     if (!isCurrent()) return;
@@ -684,16 +700,6 @@ class SnapieAudioPlayer {
       this.bindTipClick(tip);
     }
 
-    if (window.AudioAdSpot) {
-      this.adSpot = new window.AudioAdSpot({
-        episodeId: track.id,
-        viewer: this.getListenUser(),
-        capId: this.capId || null,
-        onChange: (phase, spot) => this.renderAd(phase, spot),
-      });
-      this.adSpot.attach(this.wavesurfer.getMediaElement());
-      this.adSpot.request();
-    }
   }
 
   /** Mark the playing track; `follow` turns to its page first (a new track, not the listener browsing). */
@@ -743,6 +749,11 @@ class SnapieAudioPlayer {
   }
 
   renderAd(phase, spot) {
+    // A play held for the checker's answer, and the listener's pause during it.
+    if (phase === 'waiting' || phase === 'cancelled') {
+      this.updatePlayPauseButton(phase === 'waiting');
+      return;
+    }
     const strip = document.getElementById('ad-strip');
     const wave = document.getElementById('waveform-container');
     const after = document.getElementById('ad-more-btn');
@@ -1027,7 +1038,8 @@ class SnapieAudioPlayer {
    */
   togglePlayPause() {
     if (this.adSpot && this.adSpot.toggle()) return;
-    this.wavesurfer.playPause();
+    // A play held for the spot's answer rejects; the hold resumes it.
+    this.wavesurfer.playPause()?.catch?.(() => {});
   }
 
   /**
