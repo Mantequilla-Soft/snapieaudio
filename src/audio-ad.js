@@ -17,11 +17,22 @@
  * paused (so the listen counters do not count the spot). Fails open everywhere: a spot
  * that cannot play is dropped and the track goes on. One spot per page.
  *
+ * The track's opening is HELD while the checker's answer is still out, so a pre-roll
+ * really comes first instead of cutting in after a moment of the track. A play near
+ * the start is paused at once (it still counts as the listener's tap, so iPhones let
+ * the track start later without another one). The hold ends exactly one way:
+ *   - a pre-roll: the spot plays, then the track
+ *   - a later spot, no spot, a bad answer, a network error: the track plays at once
+ *   - no answer within HOLD_MAX_MS: the track plays (a late pre-roll then rewinds it)
+ *   - the listener presses pause: nothing starts
+ *
  * The checker address can be overridden with window.SNAPIE_AD_API.
  */
 const SEEN_KEY = '3speak-ads-seen';
 const SEEN_MINUTES = 15;
 const STALL_MS = 8000;
+// The longest a play waits for the checker's answer. Fails open after.
+const HOLD_MAX_MS = 4000;
 // A pre-roll that started later than this into the track does not rewind it.
 const REWIND_WITHIN_S = 3;
 
@@ -73,9 +84,11 @@ class AudioAdSpot {
    * @param owner, permlink  the embed-audio track
    * @param episodeId        or an outside podcast episode (the checker's id), no owner
    * @param viewer           optional Hive name (the page's ?user=), as the listen counter uses
-   * @param onChange         (phase, spot) => void; phase 'idle' | 'playing' | 'paused' | 'heard'
+   * @param onChange         (phase, spot) => void; phase 'idle' | 'playing' | 'paused' | 'heard',
+   *                         or 'waiting' (a play is held for the answer) | 'cancelled' (the
+   *                         listener paused during the hold); spot is null for those two
    */
-  constructor({ owner, permlink, episodeId = null, viewer = null, capId = null, onChange = () => {} }) {
+  constructor({ owner, permlink, episodeId = null, viewer = null, capId = null, onChange = () => {}, holdMs = HOLD_MAX_MS }) {
     this.api = (window.SNAPIE_AD_API || 'https://checker.3speak.tv').replace(/\/+$/, '');
     this.owner = owner;
     this.permlink = permlink;
@@ -96,6 +109,11 @@ class AudioAdSpot {
     this.resumeAt = 0;
     this.lastProgressAt = 0;
     this.watchdog = null;
+    // The checker's answer is still out / a play is held for it.
+    this.pending = false;
+    this.held = false;
+    this.holdTimer = null;
+    this.holdMs = holdMs;
   }
 
   /** A random id for one listener's page load (the anonymous frequency cap). */
@@ -109,6 +127,8 @@ class AudioAdSpot {
       ? { episodeId: this.episodeId }
       : this.owner && this.permlink ? { owner: this.owner, permlink: this.permlink } : null;
     if (!item || this.disposed) return null;
+    this.pending = true;
+    if (this.media && !this.media.paused) this.hold();
     try {
       const res = await fetch(`${this.api}/m/session`, {
         method: 'POST',
@@ -131,20 +151,56 @@ class AudioAdSpot {
       this.el.preload = 'auto';
       this.el.src = spot.audioUrl;
       this.bindAd();
+      // A held play goes on with the spot (or without it, for a later one) ...
+      this.release();
+      // ... and one that already runs (the hold timed out) meets a due spot here.
       if (this.media) this.check();
       return spot;
     } catch {
       return null;
+    } finally {
+      // No spot, a bad answer, an error: a held play goes on with the track.
+      this.release();
     }
+  }
+
+  /** Pause a play near the start while the answer is out; it is resumed by release(). */
+  hold() {
+    const m = this.media;
+    if (!this.pending || this.disposed || this.active || !m || m.currentTime >= REWIND_WITHIN_S) return;
+    if (!this.held) {
+      this.held = true;
+      clearTimeout(this.holdTimer);
+      this.holdTimer = setTimeout(() => this.release(), this.holdMs);
+      // Node (the tests) only: never what keeps a process alive.
+      this.holdTimer?.unref?.();
+      this.onChange('waiting', null);
+    }
+    if (!m.paused) m.pause();
+  }
+
+  /** The answer is in (or took too long): a held play goes on, with the spot first if it is due. */
+  release() {
+    if (!this.pending) return;
+    this.pending = false;
+    clearTimeout(this.holdTimer);
+    if (!this.held) return;
+    this.held = false;
+    if (this.disposed || !this.media) return;
+    const at = this.due();
+    if (at != null) this.begin(at);
+    else this.media.play().catch(() => {});
   }
 
   /** The track's media element (WaveSurfer's). Call once the track is loaded. */
   attach(media) {
     this.media = media;
     media.addEventListener('play', () => { if (!this.disposed) this.onMainPlay(); });
+    media.addEventListener('playing', () => { if (!this.disposed && this.pending) this.hold(); });
     media.addEventListener('timeupdate', () => { if (!this.disposed) this.onMainTime(); });
     media.addEventListener('volumechange', () => { if (this.el && !this.disposed) { this.el.volume = media.volume; this.el.muted = media.muted; } });
-    if (this.spot) this.check();
+    if (this.pending && !media.paused) this.hold();
+    else if (this.spot) this.check();
   }
 
   /**
@@ -156,14 +212,27 @@ class AudioAdSpot {
     if (this.disposed) return;
     this.disposed = true;
     clearInterval(this.watchdog);
+    // A held play is not resumed: the next track's own load decides.
+    clearTimeout(this.holdTimer);
+    this.pending = false;
+    this.held = false;
     this.active = false;
     if (this.el) {
       try { this.el.pause(); this.el.removeAttribute('src'); this.el.load(); } catch { /* gone */ }
     }
   }
 
-  /** Play/pause of the spot for the player's own button. False when no spot runs. */
+  /**
+   * Play/pause of the spot for the player's own button. During a hold it is the
+   * listener's pause: the held play is dropped. False when neither runs.
+   */
   toggle() {
+    if (this.held) {
+      this.held = false;
+      clearTimeout(this.holdTimer);
+      this.onChange('cancelled', null);
+      return true;
+    }
     if (!this.active || !this.el) return false;
     if (this.el.paused) this.el.play().catch(() => this.finish(false)); else this.el.pause();
     return true;
@@ -203,6 +272,7 @@ class AudioAdSpot {
       this.toggle();
       return;
     }
+    if (this.pending) { this.hold(); if (this.held) return; }
     const at = this.due();
     if (at != null) this.begin(at);
   }
