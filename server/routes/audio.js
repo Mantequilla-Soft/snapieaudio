@@ -143,9 +143,11 @@ router.get('/health/ipfs', async (req, res) => {
     const { create } = await import('ipfs-http-client');
     const ipfs = create({ url: process.env.IPFS_API_URL || 'http://127.0.0.1:5001' });
     
-    // Get daemon info
+    // Get daemon info. id() is optional: it parses the node's multiaddrs and
+    // throws on transports this old client doesn't know, which shouldn't make
+    // an otherwise healthy daemon report as unhealthy.
     const [id, stats, version] = await Promise.all([
-      ipfs.id(),
+      ipfs.id().catch(() => null),
       ipfs.repo.stat(),
       ipfs.version()
     ]);
@@ -165,25 +167,28 @@ router.get('/health/ipfs', async (req, res) => {
       // Migration worker not started
     }
     
-    // Calculate storage
-    const repoSizeGB = parseFloat((stats.repoSize / (1024 ** 3)).toFixed(2));
-    const storageMaxGB = parseFloat((stats.storageMax / (1024 ** 3)).toFixed(2));
-    const availableGB = parseFloat(((stats.storageMax - stats.repoSize) / (1024 ** 3)).toFixed(2));
-    const usagePercent = parseFloat(((stats.repoSize / stats.storageMax) * 100).toFixed(1));
-    
+    // Calculate storage (repo.stat returns BigInts; convert before arithmetic
+    // and before res.json, which cannot serialize BigInt)
+    const repoSize = Number(stats.repoSize);
+    const storageMax = Number(stats.storageMax);
+    const repoSizeGB = parseFloat((repoSize / (1024 ** 3)).toFixed(2));
+    const storageMaxGB = parseFloat((storageMax / (1024 ** 3)).toFixed(2));
+    const availableGB = parseFloat(((storageMax - repoSize) / (1024 ** 3)).toFixed(2));
+    const usagePercent = parseFloat(((repoSize / storageMax) * 100).toFixed(1));
+
     res.json({
       status: 'healthy',
       ipfs: {
         version: version.version,
-        peerId: id.id,
-        addresses: id.addresses
+        peerId: id ? id.id.toString() : null,
+        addresses: id ? id.addresses.map((a) => a.toString()) : []
       },
       storage: {
         repoSizeGB,
         storageMaxGB,
         availableGB,
         usagePercent,
-        numObjects: stats.numObjects
+        numObjects: Number(stats.numObjects)
       },
       migration: {
         enabled: migrationEnabled,

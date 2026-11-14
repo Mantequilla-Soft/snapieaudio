@@ -259,12 +259,15 @@ class MigrationWorker {
 
   /**
    * Verify file exists in local IPFS
+   * Uses block/stat (object/stat was removed in kubo 0.43). offline=true makes
+   * this a purely local check: without it, kubo would try to fetch a missing
+   * root block from the network instead of reporting it absent.
    */
   async verifyLocalCID(cid) {
     try {
       const localApiUrl = process.env.IPFS_API_URL || 'http://127.0.0.1:5001';
       const response = await httpPost(
-        `${localApiUrl}/api/v0/object/stat?arg=${cid}`,
+        `${localApiUrl}/api/v0/block/stat?arg=${encodeURIComponent(cid)}&offline=true`,
         { 
           timeout: 5000,
           headers: { 'Content-Length': '0' }

@@ -107,18 +107,24 @@ async function startServer() {
     console.log(`📺 Player available at: http://localhost:${PORT}/play?a=<permlink>`);
   });
   
-  // Then check IPFS health (non-blocking)
+  // Background workers start independently of the IPFS health check below:
+  // each job talks to IPFS per run and handles failures itself, so a failed
+  // or incompatible startup probe must not silently disable them.
+  startWorkers();
+
+  // Then check IPFS health (non-blocking, informational only)
   try {
     console.log('🔍 Checking IPFS daemon health...');
-    
+
     // Check local IPFS daemon
     const { create } = await import('ipfs-http-client');
     const ipfs = create({ url: process.env.IPFS_API_URL || 'http://127.0.0.1:5001' });
-    
-    // Verify daemon is responsive
-    const id = await ipfs.id();
-    console.log(`✓ IPFS daemon connected: ${id.id}`);
-    
+
+    // Verify daemon is responsive. version() rather than id(): id() parses the
+    // node's multiaddrs and throws on transports this old client doesn't know.
+    const version = await ipfs.version();
+    console.log(`✓ IPFS daemon connected: kubo ${version.version}`);
+
     // Check local storage capacity
     const stats = await ipfs.repo.stat();
     const repoSizeGB = (Number(stats.repoSize) / (1024 ** 3)).toFixed(2);
@@ -133,42 +139,43 @@ async function startServer() {
       console.warn(`⚠️  WARNING: IPFS storage low (${availableGB}GB < ${minHeadroomGB}GB recommended)`);
       console.warn('   Uploads may fail. Consider increasing StorageMax.');
     }
-    
-    // Start migration worker in production (non-blocking)
-    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_MIGRATIONS !== 'false') {
-      try {
-        console.log('🔄 Starting migration worker...');
-        const migrationWorker = require('./jobs/migrationWorker');
-        migrationWorker.start();
-      } catch (error) {
-        console.error('⚠️  Migration worker failed to start:', error.message);
-        console.error('   Server will continue without automatic migrations.');
-      }
-    } else {
-      console.log('⏸️  Migration worker disabled (dev mode or ENABLE_MIGRATIONS=false)');
-    }
-
-    // MP3 companions for podcast apps: checks every unchecked upload on each
-    // start, then again after every upload (see jobs/mp3Worker.js)
-    if (process.env.ENABLE_MP3_TRANSCODE !== 'false') {
-      try {
-        require('./jobs/mp3Worker').start();
-      } catch (error) {
-        console.error('⚠️  MP3 worker failed to start:', error.message);
-      }
-    } else {
-      console.log('⏸️  MP3 worker disabled (ENABLE_MP3_TRANSCODE=false)');
-    }
-    
   } catch (error) {
     console.error('⚠️  IPFS health check failed:', error.message);
-    
-    if (error.code === 'ECONNREFUSED') {
+
+    if (error.code === 'ECONNREFUSED' || error.cause?.code === 'ECONNREFUSED') {
       console.error('   IPFS daemon not running at', process.env.IPFS_API_URL || 'http://127.0.0.1:5001');
       console.error('   Uploads will fail until IPFS is started: systemctl start ipfs');
     }
-    
-    console.error('⚠️  Server running WITHOUT IPFS - uploads will fail!');
+
+    console.error('⚠️  IPFS not reachable at startup - uploads will fail until it is.');
+  }
+}
+
+function startWorkers() {
+  // Start migration worker in production (non-blocking)
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_MIGRATIONS !== 'false') {
+    try {
+      console.log('🔄 Starting migration worker...');
+      const migrationWorker = require('./jobs/migrationWorker');
+      migrationWorker.start();
+    } catch (error) {
+      console.error('⚠️  Migration worker failed to start:', error.message);
+      console.error('   Server will continue without automatic migrations.');
+    }
+  } else {
+    console.log('⏸️  Migration worker disabled (dev mode or ENABLE_MIGRATIONS=false)');
+  }
+
+  // MP3 companions for podcast apps: checks every unchecked upload on each
+  // start, then again after every upload (see jobs/mp3Worker.js)
+  if (process.env.ENABLE_MP3_TRANSCODE !== 'false') {
+    try {
+      require('./jobs/mp3Worker').start();
+    } catch (error) {
+      console.error('⚠️  MP3 worker failed to start:', error.message);
+    }
+  } else {
+    console.log('⏸️  MP3 worker disabled (ENABLE_MP3_TRANSCODE=false)');
   }
 }
 
