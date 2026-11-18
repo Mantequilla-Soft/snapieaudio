@@ -96,6 +96,12 @@ class SnapieAudioPlayer {
     if (isEmbedded || iframeParam === '1' || iframeParam === 'true') {
       document.body.classList.add('iframe-mode');
       document.body.classList.add('dark-theme'); // embedded always uses the dark theme
+      // Follow the host page's color scheme. When an iframe's scheme differs from its
+      // host's (a dark site like Snapie or Ecency around our default light one), the
+      // browser paints an opaque backdrop behind the whole frame, and that showed as
+      // white (or, with forced dark mode, black) corners around the rounded card.
+      // Supporting both lets the frame match any host, so the page stays transparent.
+      document.documentElement.style.colorScheme = 'light dark';
       // Slight dark backdrop by default (see audio-styles.css); ?bg=transparent drops it
       if (params.get('bg') === 'transparent') {
         document.body.classList.add('bg-transparent');
