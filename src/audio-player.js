@@ -1203,6 +1203,11 @@ class SnapieAudioPlayer {
     
     spinner.style.display = show ? 'block' : 'none';
     container.style.opacity = show ? '0.5' : '1';
+    // A spinner in place of the play icon while loading (audio-styles.css), so the
+    // button does not offer a play it cannot do yet.
+    const btn = document.getElementById('play-pause-btn');
+    btn.classList.toggle('is-loading', show);
+    btn.setAttribute('aria-busy', show ? 'true' : 'false');
   }
 
   /**
