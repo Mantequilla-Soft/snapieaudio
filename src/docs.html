@@ -494,6 +494,7 @@
           <li>Rate limit: 10 uploads per minute</li>
           <li><strong>Username required:</strong> X-User header must be provided</li>
           <li><strong>Banned users:</strong> Users with upload restrictions will receive 403 Forbidden</li>
+          <li><strong>Free accounts</strong> (no 3Speak Pro, not a warm-up account): 2 audio uploads per 24 hours, each at most 15 minutes. Too long: 413 with <code>"code": "audio_too_long"</code>; daily count used up: 429 with <code>"code": "daily_audio_limit"</code> and a <code>Retry-After</code> header. Both carry a ready-to-show <code>message</code> and an <code>upgrade_url</code>. Ask first with <code>GET /api/audio/quota</code> (API key, <code>X-User</code>). Details and example JSON: the README's "Upload limits" section.</li>
         </ul>
       </div>
 

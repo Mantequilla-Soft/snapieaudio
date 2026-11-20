@@ -6,6 +6,7 @@ const playlistController = require('../controllers/playlistController');
 const podcastController = require('../controllers/podcastController');
 const { validateApiKey } = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const audioLimits = require('../utils/audioLimits');
 
 const router = express.Router();
 
@@ -93,8 +94,19 @@ router.post('/play-beat', beatLimiter, listenController.playBeat);
 router.post('/upload', 
   uploadLimiter,
   validateApiKey,
+  audioLimits.uploadGate, // free-account daily count, before the file is read
   upload.single('audio'),
   audioController.uploadAudio
+);
+
+/**
+ * GET /api/audio/quota - Free-account upload allowance
+ * Requires: API key; user from X-User header or ?owner=
+ * → { enabled, exempt, reason, audio: { limit, used, remaining, next_at, max_seconds } }
+ */
+router.get('/quota',
+  validateApiKey,
+  audioController.getQuota
 );
 
 /**

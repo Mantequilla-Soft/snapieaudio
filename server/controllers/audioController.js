@@ -1,5 +1,7 @@
 const AudioMessage = require('../models/AudioMessage');
 const ContentCreator = require('../models/ContentCreator');
+const audioLimits = require('../utils/audioLimits');
+const audioDuration = require('../utils/audioDuration');
 
 const MAX_AUDIO_DURATION_SECONDS = 24 * 60 * 60;
 
@@ -130,6 +132,17 @@ exports.uploadAudio = async (req, res) => {
       });
     }
 
+    // Free-account limits (server/utils/audioLimits.js): the length goes by
+    // the larger of the declared and the measured duration, and the daily
+    // count is looked at once more, all before anything is pinned.
+    let storedDuration = parseFloat(duration);
+    if (req.audioLimit?.limited) {
+      const probed = await audioDuration.probeDuration(req.file.buffer, req.file.originalname?.split('.').pop() || format);
+      const effective = audioDuration.effectiveDuration(storedDuration, probed);
+      if (effective !== null) storedDuration = effective;
+      if (await audioLimits.checkBeforeStore(req, res, { user: username, duration: storedDuration })) return;
+    }
+
     // Pin to IPFS
     const { create } = await import('ipfs-http-client');
     const ipfs = create({ url: process.env.IPFS_API_URL });
@@ -209,7 +222,7 @@ exports.uploadAudio = async (req, res) => {
       format,
       codec: codec || null,
       size: req.file.size,
-      duration: parseFloat(duration),
+      duration: storedDuration,
       bitrate: bitrate ? parseInt(bitrate) : null,
       sampleRate: sampleRate ? parseInt(sampleRate) : null,
       channels: channels ? parseInt(channels) : null,
@@ -224,6 +237,8 @@ exports.uploadAudio = async (req, res) => {
       context_id: context_id || null,
       reply_to: reply_to || null,
       api_key_used: req.apiKeyId || null,
+      // 'rss_import' for the web server's podcast imports: left out of the daily count
+      upload_source: req.audioLimit?.source || 'upload',
       // Migration logic: only migrate valuable content (songs, podcasts, interviews)
       // Voice messages and demo uploads are never migrated
       migration_status: isDemoUpload ? 'skip' : 
@@ -283,6 +298,11 @@ exports.uploadAudio = async (req, res) => {
     });
   }
 };
+
+/**
+ * GET /api/audio/quota: the free-account upload allowance (utils/audioLimits.js)
+ */
+exports.getQuota = (req, res) => audioLimits.quotaRoute(req, res);
 
 /**
  * Save waveform peaks and/or corrected duration for fast future loading.
