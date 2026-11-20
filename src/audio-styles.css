@@ -97,6 +97,27 @@ body.iframe-mode #audio-player-container {
   height: 56px;
 }
 
+/* Loading: a spinning ring instead of the play icon (showLoading). It starts on in
+   index.html, so the play icon never shows before the audio can play. */
+#play-pause-btn.is-loading svg {
+  display: none !important;
+}
+
+#play-pause-btn.is-loading::after {
+  content: '';
+  width: 40%;
+  height: 40%;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  box-sizing: border-box;
+  animation: play-btn-spin 0.8s linear infinite;
+}
+
+@keyframes play-btn-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Speed and volume: two small round chips stacked in one column, together as
    tall as the play button */
 #side-chips {
