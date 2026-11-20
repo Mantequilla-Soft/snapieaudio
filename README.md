@@ -315,6 +315,82 @@ PATCH /api/audio/:permlink               # requires API key + X-User header
 { "title": "...", "description": "...", "tags": ["..."], "post_permlink": "..." }
 ```
 
+### Upload limits (free accounts)
+
+Accounts without 3Speak Pro may upload at most **2 audio files per rolling 24
+hours**, each at most **15 minutes** long. On by default;
+`AUDIO_DAILY_LIMITS_ENABLED=false` switches it off.
+
+- **Exempt:** 3Speak Pro (`embed-users.premium`), warm-up accounts (incubating
+  on 3Speak with no Hive account, uploading under their bare handle) and the
+  `AUDIO_LIMIT_EXEMPT` list.
+- **Counted:** every audio row written for the `X-User` owner in the last 24
+  hours (manual uploads, Narrate, Audio Editor exports). Refused uploads do not
+  count.
+- **Never counted or refused:** the 3Speak web server's podcast RSS imports,
+  sent with a server-only key from `AUDIO_IMPORT_API_KEYS` plus the header
+  `X-Upload-Source: rss_import` (stored as `upload_source: "rss_import"`). The
+  header means nothing with any other key.
+- **Length:** the server measures the file (ffprobe, else an ffmpeg decode) and
+  goes by the larger of that and the declared `duration` field; if it cannot
+  measure, the declared value counts.
+- If a lookup (Pro, warm-up, the count) fails, the upload goes through.
+
+The daily count is checked before the file is read, the length before it is
+pinned, so a refused upload stores nothing. `code` values and field names are
+stable; `message` is a full English sentence a frontend can show as is;
+`error` stays a short text.
+
+**Too long: HTTP 413**
+
+```json
+{
+  "error": "Audio too long",
+  "code": "audio_too_long",
+  "message": "Free accounts can upload audio up to 15 minutes long. This file is 22 minutes. 3Speak Pro removes this limit.",
+  "max_seconds": 900,
+  "duration": 1320,
+  "upgrade_url": "https://3speak.tv/wallet/alice#pro"
+}
+```
+
+**Daily count used up: HTTP 429** (also sends a `Retry-After: <seconds>` header)
+
+```json
+{
+  "error": "Daily audio upload limit reached",
+  "code": "daily_audio_limit",
+  "message": "Free accounts can upload 2 audio files per 24 hours. Your next audio upload is possible at 2026-11-21T14:32:00Z. 3Speak Pro removes this limit.",
+  "limit": 2,
+  "used": 2,
+  "next_at": "2026-11-21T14:32:00Z",
+  "retry_after_seconds": 16320,
+  "upgrade_url": "https://3speak.tv/wallet/alice#pro"
+}
+```
+
+A plain `429` without `code` is the per-minute request rate limit, not this.
+
+**Ask before uploading: `GET /api/audio/quota`** (API key; user from the
+`X-User` header or `?owner=`)
+
+```json
+{
+  "enabled": true,
+  "exempt": false,
+  "reason": null,
+  "audio": { "limit": 2, "used": 1, "remaining": 1, "next_at": "2026-11-21T14:32:00Z", "max_seconds": 900 }
+}
+```
+
+- `reason`: `"pro"`, `"warmup"`, `"listed"` or `null`.
+- `next_at`: when the next slot frees up (the oldest counted upload leaves the
+  24 hours); `null` when nothing is counted. With `remaining: 0` it is when the
+  next upload is possible.
+- Exempt users, and everyone when the limits are off (`enabled: false`), get
+  `exempt: true` and `null` for `limit`, `remaining`, `next_at` and
+  `max_seconds` (no limit).
+
 ## 📊 MongoDB Schema
 
 ```javascript
@@ -532,6 +608,15 @@ deploy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart snapieaudio
 | `MP3_RETRY_DELAY_MINUTES` | 60 | Wait between attempts |
 | `MP3_FETCH_TIMEOUT_SECONDS` | 300 | Timeout for reading an original from IPFS |
 | `FFMPEG_PATH` | (ffmpeg-static) | Use a specific ffmpeg binary |
+| `FFPROBE_PATH` | ffprobe | ffprobe for measuring upload length (falls back to an ffmpeg decode) |
+| `AUDIO_DAILY_LIMITS_ENABLED` | true | `false` switches the free-account upload limits off |
+| `AUDIO_LIMIT_PER_DAY` | 2 | Audio uploads per rolling 24 hours for free accounts |
+| `AUDIO_MAX_DURATION_SECONDS` | 900 | Longest audio a free account may upload |
+| `AUDIO_LIMIT_EXEMPT` | (empty) | Comma list of usernames without limits |
+| `AUDIO_IMPORT_API_KEYS` | (empty) | Server-only keys (also in `API_KEYS`) whose `X-Upload-Source: rss_import` uploads are never counted |
+| `AUDIO_PRO_USERS_COLLECTION` | embed-users | Collection holding the `premium` flag |
+| `AUDIO_UPGRADE_URL` | https://3speak.tv/wallet/{user}#pro | `upgrade_url` in refusals (`{user}` is filled in) |
+| `CHECKER_URL` | https://checker.3speak.tv | Checker, for warm-up (incubation) lookups and podcasts |
 
 ### MongoDB Indexes
 

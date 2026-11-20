@@ -249,6 +249,9 @@ class AudioMessage {
         
         // API Key tracking
         api_key_used: audioData.api_key_used || null,
+        // 'upload' or 'rss_import' (server-side podcast imports, not counted
+        // against the free-account daily limit)
+        upload_source: audioData.upload_source || 'upload',
         
         // Storage management
         last_gc_check: null,
