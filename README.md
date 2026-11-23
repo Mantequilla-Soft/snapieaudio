@@ -318,7 +318,7 @@ PATCH /api/audio/:permlink               # requires API key + X-User header
 ### Upload limits (free accounts)
 
 Accounts without 3Speak Pro may upload at most **2 audio files per rolling 24
-hours**, each at most **15 minutes** long. On by default;
+hours**, each at most **20 minutes** long. On by default;
 `AUDIO_DAILY_LIMITS_ENABLED=false` switches it off.
 
 - **Exempt:** 3Speak Pro (`embed-users.premium`), warm-up accounts (incubating
@@ -347,8 +347,8 @@ stable; `message` is a full English sentence a frontend can show as is;
 {
   "error": "Audio too long",
   "code": "audio_too_long",
-  "message": "Free accounts can upload audio up to 15 minutes long. This file is 22 minutes. 3Speak Pro removes this limit.",
-  "max_seconds": 900,
+  "message": "Free accounts can upload audio up to 20 minutes long. This file is 22 minutes. 3Speak Pro removes this limit.",
+  "max_seconds": 1200,
   "duration": 1320,
   "upgrade_url": "https://3speak.tv/wallet/alice#pro"
 }
@@ -379,7 +379,7 @@ A plain `429` without `code` is the per-minute request rate limit, not this.
   "enabled": true,
   "exempt": false,
   "reason": null,
-  "audio": { "limit": 2, "used": 1, "remaining": 1, "next_at": "2026-11-21T14:32:00Z", "max_seconds": 900 }
+  "audio": { "limit": 2, "used": 1, "remaining": 1, "next_at": "2026-11-21T14:32:00Z", "max_seconds": 1200 }
 }
 ```
 
@@ -611,7 +611,7 @@ deploy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart snapieaudio
 | `FFPROBE_PATH` | ffprobe | ffprobe for measuring upload length (falls back to an ffmpeg decode) |
 | `AUDIO_DAILY_LIMITS_ENABLED` | true | `false` switches the free-account upload limits off |
 | `AUDIO_LIMIT_PER_DAY` | 2 | Audio uploads per rolling 24 hours for free accounts |
-| `AUDIO_MAX_DURATION_SECONDS` | 900 | Longest audio a free account may upload |
+| `AUDIO_MAX_DURATION_SECONDS` | 1200 | Longest audio a free account may upload |
 | `AUDIO_LIMIT_EXEMPT` | (empty) | Comma list of usernames without limits |
 | `AUDIO_IMPORT_API_KEYS` | (empty) | Server-only keys (also in `API_KEYS`) whose `X-Upload-Source: rss_import` uploads are never counted |
 | `AUDIO_PRO_USERS_COLLECTION` | embed-users | Collection holding the `premium` flag |

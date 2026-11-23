@@ -60,12 +60,12 @@ async function runGate(req) {
 
 // ── config ───────────────────────────────────────────────────────────────────
 
-test('limits are on by default with 2 per day and 15 minutes', (t) => {
+test('limits are on by default with 2 per day and 20 minutes', (t) => {
   withEnv(t, {});
   const cfg = limits.config();
   assert.equal(cfg.enabled, true);
   assert.equal(cfg.perDay, 2);
-  assert.equal(cfg.maxSeconds, 900);
+  assert.equal(cfg.maxSeconds, 1200);
 });
 
 test('AUDIO_DAILY_LIMITS_ENABLED=false is the kill switch; other values keep it on', (t) => {
@@ -83,7 +83,7 @@ test('env values are parsed, bad ones fall back to the defaults', (t) => {
   withEnv(t, { AUDIO_LIMIT_PER_DAY: '5', AUDIO_MAX_DURATION_SECONDS: 'abc', AUDIO_LIMIT_EXEMPT: ' @Bob , carol ,' });
   const cfg = limits.config();
   assert.equal(cfg.perDay, 5);
-  assert.equal(cfg.maxSeconds, 900);
+  assert.equal(cfg.maxSeconds, 1200);
   assert.deepEqual([...cfg.exempt], ['bob', 'carol']);
 });
 
@@ -363,7 +363,7 @@ function controllerMocks(t, { probed = null, dates = [] } = {}) {
   return t.mock.method(audioDuration, 'probeDuration', async () => probed);
 }
 
-test('upload: a probed length over 15 minutes is refused with 413 although the client said 5', async (t) => {
+test('upload: a probed length over 20 minutes is refused with 413 although the client said 5', async (t) => {
   withEnv(t, {});
   controllerMocks(t, { probed: 1320.4 });
   const res = createResponse();
@@ -372,8 +372,8 @@ test('upload: a probed length over 15 minutes is refused with 413 although the c
   assert.deepEqual(res.body, {
     error: 'Audio too long',
     code: 'audio_too_long',
-    message: 'Free accounts can upload audio up to 15 minutes long. This file is 22 minutes. 3Speak Pro removes this limit.',
-    max_seconds: 900,
+    message: 'Free accounts can upload audio up to 20 minutes long. This file is 22 minutes. 3Speak Pro removes this limit.',
+    max_seconds: 1200,
     duration: 1320,
     upgrade_url: 'https://3speak.tv/wallet/alice#pro',
   });
@@ -383,16 +383,16 @@ test('upload: the declared length counts when the probe fails or reads less', as
   withEnv(t, {});
   const probe = controllerMocks(t, { probed: null });
   const res = createResponse();
-  await audioController.uploadAudio(controllerReq({ limited: true, source: 'upload' }, { duration: '1000' }), res);
+  await audioController.uploadAudio(controllerReq({ limited: true, source: 'upload' }, { duration: '1300' }), res);
   assert.equal(res.statusCode, 413);
-  assert.equal(res.body.duration, 1000);
+  assert.equal(res.body.duration, 1300);
   assert.equal(probe.mock.callCount(), 1);
 
   probe.mock.mockImplementation(async () => 600);
   const res2 = createResponse();
-  await audioController.uploadAudio(controllerReq({ limited: true, source: 'upload' }, { duration: '1000' }), res2);
+  await audioController.uploadAudio(controllerReq({ limited: true, source: 'upload' }, { duration: '1300' }), res2);
   assert.equal(res2.statusCode, 413);
-  assert.equal(res2.body.duration, 1000);
+  assert.equal(res2.body.duration, 1300);
 });
 
 test('upload: a count filled up meanwhile is refused with 429 before pinning', async (t) => {
@@ -419,9 +419,9 @@ test('upload: exempt and import uploads are never probed or refused for length',
 
 test('upload: a limited upload within the rules goes on to the pin', async (t) => {
   withEnv(t, { IPFS_API_URL: 'http://127.0.0.1:9' });
-  controllerMocks(t, { probed: 899.6, dates: [Date.now() - HOUR] });
+  controllerMocks(t, { probed: 1199.6, dates: [Date.now() - HOUR] });
   const res = createResponse();
-  await audioController.uploadAudio(controllerReq({ limited: true, source: 'upload' }, { duration: '899' }), res);
+  await audioController.uploadAudio(controllerReq({ limited: true, source: 'upload' }, { duration: '1199' }), res);
   assert.ok(![413, 429].includes(res.statusCode), `status ${res.statusCode}`);
   assert.equal(limits.countedUploads.mock.callCount(), 1);
 });
@@ -453,7 +453,7 @@ test('quota: a free user sees the allowance', async (t) => {
   assert.equal(res.body.exempt, false);
   assert.equal(res.body.reason, null);
   const { next_at, ...rest } = res.body.audio;
-  assert.deepEqual(rest, { limit: 2, used: 1, remaining: 1, max_seconds: 900 });
+  assert.deepEqual(rest, { limit: 2, used: 1, remaining: 1, max_seconds: 1200 });
   assert.ok(Math.abs(Date.parse(next_at) - (at + 24 * HOUR)) <= 1000);
 });
 

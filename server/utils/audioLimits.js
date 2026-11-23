@@ -3,7 +3,7 @@
  *
  * Owner's rules: an account without 3Speak Pro may upload at most
  * AUDIO_LIMIT_PER_DAY audio files (default 2) per rolling 24 hours, each at most
- * AUDIO_MAX_DURATION_SECONDS long (default 900 = 15 minutes).
+ * AUDIO_MAX_DURATION_SECONDS long (default 1200 = 20 minutes).
  *
  * Exempt:
  *   - 3Speak Pro: `embed-users.premium === true` (kept in sync by the checker's
@@ -26,7 +26,7 @@
 const AudioMessage = require('../models/AudioMessage');
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
-const DURATION_GRACE_SECONDS = 1; // a 15:00.4 file is still "15 minutes"
+const DURATION_GRACE_SECONDS = 1; // a 20:00.4 file is still "20 minutes"
 const IMPORT_SOURCE = 'rss_import';
 const PRO_TTL_MS = 60 * 1000;
 const WARMUP_TTL_MS = 5 * 60 * 1000;
@@ -46,7 +46,7 @@ function config(env = process.env) {
     // Enforced unless explicitly switched off (owner, 2026-11-20).
     enabled: String(env.AUDIO_DAILY_LIMITS_ENABLED ?? '').trim().toLowerCase() !== 'false',
     perDay: intEnv(env.AUDIO_LIMIT_PER_DAY, 2, 0),
-    maxSeconds: intEnv(env.AUDIO_MAX_DURATION_SECONDS, 900, 1),
+    maxSeconds: intEnv(env.AUDIO_MAX_DURATION_SECONDS, 1200, 1),
     exempt: new Set(list(env.AUDIO_LIMIT_EXEMPT).map(norm)),
     importKeys: new Set(list(env.AUDIO_IMPORT_API_KEYS)),
     proCollection: env.AUDIO_PRO_USERS_COLLECTION || 'embed-users',
