@@ -1,465 +1,194 @@
-# 🎵 SnapieAudioPlayer
+<p align="center">
+  <img src=".github/assets/snapie-logo.png" width="112" alt="Snapie">
+</p>
 
-Lightweight HTML5 audio player for voice messages and audio content on the 3speak/Snapie ecosystem. Features waveform visualization using WaveSurfer.js and IPFS content delivery.
+<h1 align="center">Snapie Audio</h1>
 
-## ✨ Features
+<p align="center">
+  <strong>Audio hosting and a waveform player for voice messages, podcasts and songs.</strong><br>
+  Part of <a href="https://snapie.io">Snapie</a>, by Mantequilla Soft. Powers audio on <a href="https://3speak.tv">3Speak</a>.
+</p>
 
-- **🎨 WhatsApp/Discord-style UI** - Clean, mobile-first interface
-- **📊 Waveform Visualization** - Interactive audio scrubbing with WaveSurfer.js
-- **⚡ IPFS-powered** - Decentralized audio storage with automatic gateway fallback
-- **🔗 Dual Access Modes** - Support for both permlinks (database) and direct CID playback
-- **📱 Mobile-optimized** - Touch controls, responsive design
-- **⏩ Speed Control** - 1x, 1.5x, 2x playback speeds
-- **🔊 Volume Control** - Mute chip under the speed chip (or press M), slider on hover; the level is remembered (iOS: mute only)
-- **📈 Play Tracking** - MongoDB-based analytics and engagement metrics
-- **🔒 Rate-limited** - Protection against API abuse
-- **🎵 Content Categories** - Distinguish between ephemeral voice messages and permanent content (podcasts, songs, interviews)
-- **🖼️ Thumbnail Support** - Optional cover art/artwork URLs for audio entries
-- **📡 Feed API** - Public endpoints for building discovery feeds, trending pages, tag browsing, and user profiles
-- **🏷️ Tag System** - Content tagging for discovery and filtering
-- **📃 Playlist Embed** - `/play?list=<id>` plays every track of a public 3speak.tv playlist, in order, paged and sortable by date
-- **🎙️ Podcast Embed** - `/play?podcast=<id>` plays every episode of an outside show followed on 3speak.tv
-- **💸 Tip Button** - One-click link to the track owner's 3speak.tv tip page
-- **📣 Sponsored Spots** - Plays 3Speak's spoken sponsor spots or an advertiser's own uploaded audio ads in the embed
-- **⏱️ Listening Time Reporting** - Anonymously reports listening time to the 3Speak checker
+<p align="center">
+  <a href="https://github.com/Mantequilla-Soft/snapieaudio/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Mantequilla-Soft/snapieaudio/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="node >=18" src="https://img.shields.io/badge/node-%3E%3D18-4a9eff">
+  <img alt="Express 4" src="https://img.shields.io/badge/Express-4-1a2332">
+  <img alt="MongoDB driver 6" src="https://img.shields.io/badge/MongoDB-6-4a9eff">
+  <img alt="WaveSurfer.js 7" src="https://img.shields.io/badge/WaveSurfer.js-7-1a2332">
+  <img alt="storage IPFS" src="https://img.shields.io/badge/storage-IPFS-4a9eff">
+  <img alt="license MIT" src="https://img.shields.io/badge/license-MIT-blue">
+</p>
 
-## 🏗️ Architecture
+<p align="center">
+  Part of <a href="https://snapie.io">Snapie</a> · sibling repo: <a href="https://github.com/Mantequilla-Soft/snapievideoplayer">Snapie Video Player</a>
+</p>
+
+---
+
+Snapie Audio is a small Node.js service that stores audio on IPFS, keeps its metadata in
+MongoDB and serves an embeddable player at `/play`. One iframe plays a single track, a
+whole 3Speak playlist or an outside podcast, with a waveform, speed and volume chips, a
+tip button and listen counting that cannot be faked with a single request.
+
+It is for apps that want voice messages or long-form audio without building their own
+storage and player: 3speak.tv uses it for audio posts, playlists and uploads, and any site
+can drop the iframe in. The upload API is key-protected, the player and the read API are
+public.
+
+## Contents
+
+- [How it works](#how-it-works)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Reference](#reference): [player URL](#player-url) · [embedding](#embedding) · [read API](#read-api) · [upload API](#upload-api) · [listen counting](#listen-counting) · [upload limits](#upload-limits) · [admin API](#admin-api) · [data model](#data-model) · [background jobs](#background-jobs)
+- [Development and tests](#development-and-tests)
+- [Repository layout](#repository-layout)
+- [Security notes](#security-notes)
+- [Contributing](#contributing)
+- [License](#license)
+
+## How it works
 
 ```
-Player (Frontend) ──→ Express API ──→ MongoDB ──→ IPFS Network
-   ↓                      ↓              ↓            ↓
-WaveSurfer.js        Audio Routes   Metadata    Audio Files
-HTML5 Audio          Controllers    Schema      (CID-based)
+  your app ── POST /api/audio/upload (X-API-Key, X-User) ──▶ Snapie Audio ──▶ IPFS node (pin)
+                                                                 │
+                                                                 ▼
+                                                         MongoDB: embed-audio
+                                                                 │
+  <iframe src="/play?a=…"> ── GET /api/audio?a=… ───────────────┘
+        │
+        ├── fetches the file from an IPFS gateway (primary, then fallback)
+        ├── POST /api/audio/play-start, then /play-beat while it really plays
+        └── optional: sponsored spots and listening time via the 3Speak checker
 ```
 
-## 📋 Prerequisites
+1. **Upload.** A client sends the file plus its declared `duration` and `format`. The
+   server checks the API key and the uploader, adds the file to the local IPFS node with
+   a pin, verifies the pin, and writes a row with an 8 character `permlink`.
+2. **Play.** `/play?a=<permlink>` loads the player page. It asks the API for the metadata,
+   which includes a primary and a fallback gateway URL chosen from the file's pin status,
+   and draws the waveform (stored peaks when present, else decoded once and saved back).
+3. **Count.** A play counts only after the listener streamed 66% of the track, measured by
+   the server from the time between heartbeats.
+4. **Keep.** Background jobs add an MP3 copy for podcast apps and, in production, copy
+   songs, podcasts and interviews to a second IPFS node.
 
-- **Node.js** v16+ and npm
-- **MongoDB** v5+ (local or remote)
-- **IPFS Gateway** access (defaults to ipfs.3speak.tv)
+## Quick start
 
-## 🚀 Quick Start
-
-### 1. Clone and Install
+Needs Node.js 18 or newer, MongoDB, and a Kubo (go-ipfs) node with its HTTP API reachable
+(default `http://127.0.0.1:5001`). The player works without an IPFS node for `?cid=`
+playback; uploads need one.
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Mantequilla-Soft/snapieaudio.git
 cd snapieaudio
 npm install
+cp .env.example .env   # then edit it, see Configuration
+npm run dev            # nodemon; or `npm start`
 ```
 
-### 2. Configure Environment
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your settings:
-
-```env
-PORT=3000
-MONGODB_URI=mongodb://localhost:27017/snapieaudio
-IPFS_PRIMARY_GATEWAY=https://ipfs.3speak.tv/ipfs/
-```
-
-### 3. Start Server
-
-```bash
-# Development mode (with nodemon)
-npm run dev
-
-# Production mode
-npm start
-```
-
-### 4. Test Player
-
-Open your browser:
+Then open:
 
 ```
-# Direct CID playback (no database needed)
-http://localhost:3000/play?cid=bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabq...
-
-# Permlink-based playback (requires database entry)
-http://localhost:3000/play?a=dkojohs
+http://localhost:3000/                  # landing page
+http://localhost:3000/docs              # API documentation page
+http://localhost:3000/play?cid=<cid>    # play any IPFS CID, no database row needed
+http://localhost:3000/play?a=<permlink> # play an uploaded track
+http://localhost:3000/health            # { "status": "ok" }
 ```
 
-## 📁 Project Structure
+`ffmpeg-static` is an optional dependency; when it installs, the MP3 worker and the length
+check have an ffmpeg without any system package.
 
-```
-snapieaudio/
-├── src/                      # Frontend audio player
-│   ├── index.html           # Player page template
-│   ├── audio-player.js      # Player logic (WaveSurfer)
-│   └── audio-styles.css     # Player styling
-├── server/                   # Backend API
-│   ├── index.js             # Express server
-│   ├── routes/
-│   │   └── audio.js         # Audio API routes
-│   ├── controllers/
-│   │   └── audioController.js
-│   └── models/
-│       └── AudioMessage.js  # MongoDB schema
-├── assets/                   # Static assets (icons, etc.)
-├── docs/                     # Internal documentation (gitignored)
-│   └── AUDIO_PLAYER_DESIGN.md
-├── package.json
-└── .env.example
-```
+## Configuration
 
-## 🔌 API Endpoints
+All settings come from environment variables (`.env` is loaded with dotenv). Keys and
+passwords have no default: set your own.
 
-### Get Audio Metadata
+| Variable | Purpose | Default |
+|---|---|---|
+| `PORT` | HTTP port | `3000` |
+| `NODE_ENV` | `production` turns on the migration worker and https in returned URLs | unset |
+| `TRUST_PROXY` | Express `trust proxy` hops, so rate limits see the real client IP | `1` |
+| `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017` |
+| `MONGODB_DATABASE` | Database name (the server reads this one, not `DB_NAME`) | `snapieaudio` |
+| `MONGODB_COLLECTION_AUDIO` | Collection for audio rows | `embed-audio` |
+| `IPFS_API_URL` | Kubo HTTP API used for uploads, pins and health | `http://127.0.0.1:5001` |
+| `IPFS_PRIMARY_GATEWAY` | Gateway base URL for local pins, without `/ipfs` (e.g. `https://ipfs.example.com`) | none |
+| `IPFS_SUPERNODE_URL` | Second node: gateway for migrated files and Kubo API the migration pins to | `https://ipfs.3speak.tv` |
+| `IPFS_FALLBACK_GATEWAY_1` / `_2` | Public fallback gateway base URLs | none |
+| `API_KEYS` | Comma list of keys accepted by the upload and edit routes | none |
+| `DEMO_API_KEY` | Key used by `/demo`; its uploads are never migrated and get a 24 hour `pin_until` | none |
+| `ADMIN_PASSWORD` | Password for `/admin` and `/api/admin/*` | none, **always set it** |
+| `UPLOAD_MAX_FILE_SIZE` | Bytes, or with a unit (`100mb`, `1gb`) | `100mb` |
+| `UPLOAD_ALLOWED_FORMATS` | Allowed file extensions | `mp3,m4a,ogg,webm,wav` |
+| `RATE_LIMIT_WINDOW_MS` | Rate limit window | `60000` |
+| `RATE_LIMIT_MAX_REQUESTS` | Requests per window for play, playlist, podcast and waveform routes | `100` |
+| `BEAT_RATE_LIMIT_MAX_REQUESTS` | Requests per window for `/play-beat` | `600` |
+| `LISTEN_BEAT_SECONDS` | Heartbeat interval the player is told to use | `3` |
+| `LISTEN_DEDUPE_MIN` | Same logged-in listener and track counts once per this many minutes | `30` |
+| `PLAY_DEDUPE_MIN` | Same IP and track counts once per this many minutes (anonymous) | `30` |
+| `LISTEN_BEAT_KEY` | Optional heartbeat encryption key (see [listen counting](#listen-counting)) | unset |
+| `ENABLE_MIGRATIONS` | `false` turns the migration worker off | on in production |
+| `MIGRATION_SCHEDULE_HOUR` | Hour of the daily migration run | `2` |
+| `ENABLE_MP3_TRANSCODE` | `false` turns the MP3 companion worker off | on |
+| `MP3_BITRATE` | MP3 companion bitrate (CBR) | `128k` |
+| `MP3_MAX_ATTEMPTS` | Attempts before an upload is marked `failed` | `3` |
+| `MP3_RETRY_DELAY_MINUTES` | Wait between attempts | `60` |
+| `MP3_FETCH_TIMEOUT_SECONDS` | Timeout for reading an original from IPFS | `300` |
+| `FFMPEG_PATH` | A specific ffmpeg binary | `ffmpeg-static`, else `ffmpeg` |
+| `FFPROBE_PATH` | ffprobe for measuring upload length (falls back to an ffmpeg decode) | `ffprobe` |
+| `AUDIO_DAILY_LIMITS_ENABLED` | `false` switches the [upload limits](#upload-limits) off | on |
+| `AUDIO_LIMIT_PER_DAY` | Uploads per rolling 24 hours for limited accounts | `2` |
+| `AUDIO_MAX_DURATION_SECONDS` | Longest upload for limited accounts | `1200` |
+| `AUDIO_LIMIT_EXEMPT` | Comma list of usernames without limits | empty |
+| `AUDIO_IMPORT_API_KEYS` | Keys (also listed in `API_KEYS`) whose RSS imports are never counted | empty |
+| `AUDIO_PRO_USERS_COLLECTION` | Collection with the per-user `premium` flag | `embed-users` |
+| `AUDIO_UPGRADE_URL` | `upgrade_url` in limit refusals, `{user}` is filled in | `https://3speak.tv/wallet/{user}#pro` |
+| `CHECKER_URL` | 3Speak checker, for podcast episodes and warm-up lookups | `https://checker.3speak.tv` |
+| `HIVE_API_NODES` | Comma list of Hive API nodes for post titles and account checks | `https://api.hive.blog,https://api.deathwing.me,https://api.openhive.network` |
 
-```http
-GET /api/audio?a=dkojohs
-GET /api/audio?cid=bafybeig...
+The player page reads three optional globals, for a fork that injects them into
+`src/index.html`: `window.LISTEN_BEAT_KEY`, `window.SNAPIE_AD_API` and
+`window.SNAPIE_LISTEN_API` (both default to `https://checker.3speak.tv`).
 
-Response:
-{
-  "permlink": "dkojohs",
-  "author": "meno",
-  "cid": "bafybeigdyrzt5...",
-  "category": "voice_message",
-  "duration": 45,
-  "format": "mp3",
-  "waveform": [0.2, 0.5, 0.8, ...],
-  "title": "My Audio",
-  "description": "This is an example audio recording",
-  "tags": ["music", "podcast", "interview"],
-  "thumbnail_url": "https://files.hive.blog/file/hiveimages/cover.jpg",
-  "post_permlink": "my-audio-snap-2026",
-  "audioUrl": "https://ipfs.3speak.tv/ipfs/bafy...",
-  "audioUrlFallback": "https://dweb.link/ipfs/bafy...",
-  "plays": 150
-}
-```
+## Reference
 
-### Get Audio Feed
+### Player URL
 
-```http
-GET /api/audio/feed?limit=20&offset=0&sort=newest
+`/play` takes one source and any of the display options.
 
-Query Parameters:
-- limit: Items per page (default 20, max 100)
-- offset: Pagination offset (default 0)
-- sort: newest|oldest|plays|trending (default newest)
-- category: voice_message|podcast|song|interview|audiobook|noise_sample
-- tag: Filter by tag (e.g., "music")
-- owner: Filter by username
+| Param | Example | Does |
+|---|---|---|
+| `a` | `?a=dkojohs` | Plays one track by permlink |
+| `cid` | `?cid=bafybei…` | Plays an IPFS CID directly, no database row needed |
+| `list` | `?list=<playlist id>` | Plays every audio item of a public 3speak.tv playlist, advancing on its own |
+| `podcast` | `?podcast=<feed id>` | Plays every episode of an outside show followed on 3speak.tv |
+| `track` | `&track=3` | Start at this track (1-based) of a list or podcast |
+| `sort` | `&sort=desc` | List order by date, newest first (default oldest first; the listener can flip it) |
+| `user` | `&user=badadib` | Credits the listen to this Hive account (also accepted as `username`) |
+| `mode` | `&mode=compact` | `full` (default), `compact`, or `minimal` (no header, chips or tip button) |
+| `theme` | `&theme=dark` | Dark theme when opened as a page; inside an iframe it is always dark |
+| `bg` | `&bg=transparent` | In an iframe, drops the slight dark backdrop |
+| `iframe` | `&iframe=1` | Forces iframe styling outside a frame |
 
-Response:
-{
-  "items": [
-    {
-      "permlink": "abc123xy",
-      "owner": "meno",
-      "audio_cid": "QmdMsEX...",
-      "category": "podcast",
-      "duration": 1800,
-      "format": "mp3",
-      "title": "My Podcast",
-      "tags": ["podcast", "tech"],
-      "thumbnail_url": "https://...",
-      "plays": 152,
-      "createdAt": "2026-02-20T10:30:00Z",
-      "audioUrl": "https://ipfs.3speak.tv/ipfs/...",
-      ...
-    }
-  ],
-  "pagination": {
-    "limit": 20,
-    "offset": 0,
-    "total": 156,
-    "hasMore": true
-  }
-}
+Player features: waveform scrubbing (WaveSurfer.js 7), speed chip (1x, 1.5x, 2x), volume
+chip with a remembered level (press **M** to mute), a tip button that opens the creator's
+3speak.tv tip page when the track is linked to a Hive post, and sponsored audio spots
+served by the 3Speak checker (fails open: a spot that cannot play is skipped).
 
-Examples:
-GET /api/audio/feed?sort=plays              # Trending audio
-GET /api/audio/feed?category=podcast        # All podcasts
-GET /api/audio/feed?tag=music&sort=plays    # Trending music
-GET /api/audio/feed?owner=meno              # User's audio
-```
-
-### Get a Playlist (embed)
-
-```http
-GET /api/audio/playlist/:id
-
-Response:
-{
-  "id": "<playlist id>",
-  "name": "meno playlist",
-  "owner": "meno",
-  "cover": "https://...",
-  "tracks": [
-    {
-      "permlink": "abc123xy",
-      "owner": "meno",
-      "title": "Track title (Hive post title wins over the upload's own name)",
-      "duration": 180,
-      "thumbnail_url": "https://...",
-      "post_permlink": "my-audio-snap-2026",
-      "created": "2026-02-20T10:30:00Z"
-    }
-  ]
-}
-```
-
-What `/play?list=<id>` plays: every audio item of a public 3speak.tv playlist,
-in the playlist's own order, up to 500 tracks. Private playlists and Watch
-Later answer 404, as do playlists (or items) from a banned/hidden creator.
-Video items and unpublished tracks are skipped.
-
-### Get a Podcast's Episodes (embed)
-
-```http
-GET /api/audio/podcast/:id
-
-Response:
-{
-  "id": "<feed id>",
-  "name": "Show name",
-  "tracks": [ { "title": "...", "duration": 1800, "created": "...", ... } ]
-}
-```
-
-What `/play?podcast=<id>` plays: every episode of an outside RSS show followed
-on 3speak.tv, kept by the 3Speak checker. An episode that links back to a
-published 3Speak audio post plays as that track (waveform, plays, tip button
-and sponsored spots all apply); every other episode plays its own file
-directly, with no waveform — most podcast hosts don't allow another site to
-read the raw file, only stream it.
-
-### Track Listens (event-driven)
-
-A play is counted only after the listener has **genuinely streamed ≥66%** of
-the track — never on mere load. The player opens a server-measured session and
-sends a heartbeat (~every 3s, plus a final one on pause/finish) while the
-audio is actually advancing; the
-server credits only the wall-clock gap it observes between beats (clamped per
-beat), so a play can't be forged with a single request.
-
-```http
-POST /api/audio/play-start
-Content-Type: application/json
-
-{ "permlink": "dkojohs", "username": "alice" }   // username optional (anonymous embed omits it)
-
-Response:
-{ "sid": "…", "token": "…", "beatSeconds": 3, "threshold": 0.66, "payable": false, "encrypted": false }
-```
-
-```http
-POST /api/audio/play-beat
-Content-Type: application/json
-
-{ "sid": "…", "token": "…" }      // or { "enc": "<base64>" } when LISTEN_BEAT_KEY is set
-
-Response:
-{ "progress": 0.71, "credited": true, "done": true }
-```
-
-At ≥66% the server bumps `plays` and writes **one row to `audio-listen-log`**
-(deduped per listener — by username when logged in, else by IP). Every credited
-listen lives in this one collection for reporting, each carrying:
-
-- `payable: false` — anonymous / non-`ppl` / self / unmeasured listen. Counts
-  toward `plays` and analytics only.
-- `payable: true` — logged-in listener on a pay-per-listen (`ppl`) track who is
-  not the author; eligible for the weekly payout.
-- `listenedSeconds` + `trackDuration` — how much of the track was genuinely
-  streamed, tagged with `ip` and `username` (null when anonymous).
-- `createdAt` (full timestamp) + `listenDate` (UTC `YYYY-MM-DD`) — when the
-  listen happened, for time-series reporting and consolidation grouping.
-
-After 5 months a checker cron folds each track's old rows into its `embed-audio`
-doc (`archivedListens` / `archivedPayableListens`) and deletes them, so the
-collection stays bounded while lifetime totals are preserved.
-
-> ⚠️ **Payout coupling:** the shared 3speak-checker payout worker credits the
-> track owner for every row, so it filters `payable: { $ne: false }` to skip
-> anonymous rows. Both services must be deployed together.
-
-A track with **missing/zero duration** can't be measured, so `play-start`
-records one full listen (deduped by IP per day, `payable:false`) and returns
-`{ "tracked": false, "reason": "no_duration" }` instead of a session.
-
-> **Legacy:** `POST /api/audio/play` (blind count-on-load) still exists for
-> backward compatibility but the bundled player no longer calls it.
-
-```http
-POST /api/audio/play
-Content-Type: application/json
-
-{ "permlink": "dkojohs" }
-
-Response:
-{ "success": true, "plays": 151 }
-```
-
-### Update Metadata
-
-```http
-PATCH /api/audio/:permlink/waveform      # no auth — player self-heals after first decode
-{ "waveform": [[0.2, 0.5, ...]], "duration": 123.4 }
-
-PATCH /api/audio/:permlink/thumbnail     # requires API key + X-User header
-{ "thumbnail_url": "https://..." }
-
-PATCH /api/audio/:permlink/post-permlink # requires API key + X-User header
-{ "post_permlink": "my-audio-snap-2026" }
-
-PATCH /api/audio/:permlink               # requires API key + X-User header
-{ "title": "...", "description": "...", "tags": ["..."], "post_permlink": "..." }
-```
-
-### Upload limits (free accounts)
-
-Accounts without 3Speak Pro may upload at most **2 audio files per rolling 24
-hours**, each at most **20 minutes** long. On by default;
-`AUDIO_DAILY_LIMITS_ENABLED=false` switches it off.
-
-- **Exempt:** 3Speak Pro (`embed-users.premium`), warm-up accounts (incubating
-  on 3Speak with no Hive account, uploading under their bare handle) and the
-  `AUDIO_LIMIT_EXEMPT` list.
-- **Counted:** every audio row written for the `X-User` owner in the last 24
-  hours (manual uploads, Narrate, Audio Editor exports). Refused uploads do not
-  count.
-- **Never counted or refused:** the 3Speak web server's podcast RSS imports,
-  sent with a server-only key from `AUDIO_IMPORT_API_KEYS` plus the header
-  `X-Upload-Source: rss_import` (stored as `upload_source: "rss_import"`). The
-  header means nothing with any other key.
-- **Length:** the server measures the file (ffprobe, else an ffmpeg decode) and
-  goes by the larger of that and the declared `duration` field; if it cannot
-  measure, the declared value counts.
-- If a lookup (Pro, warm-up, the count) fails, the upload goes through.
-
-The daily count is checked before the file is read, the length before it is
-pinned, so a refused upload stores nothing. `code` values and field names are
-stable; `message` is a full English sentence a frontend can show as is;
-`error` stays a short text.
-
-**Too long: HTTP 413**
-
-```json
-{
-  "error": "Audio too long",
-  "code": "audio_too_long",
-  "message": "Free accounts can upload audio up to 20 minutes long. This file is 22 minutes. 3Speak Pro removes this limit.",
-  "max_seconds": 1200,
-  "duration": 1320,
-  "upgrade_url": "https://3speak.tv/wallet/alice#pro"
-}
-```
-
-**Daily count used up: HTTP 429** (also sends a `Retry-After: <seconds>` header)
-
-```json
-{
-  "error": "Daily audio upload limit reached",
-  "code": "daily_audio_limit",
-  "message": "Free accounts can upload 2 audio files per 24 hours. Your next audio upload is possible at 2026-11-21T14:32:00Z. 3Speak Pro removes this limit.",
-  "limit": 2,
-  "used": 2,
-  "next_at": "2026-11-21T14:32:00Z",
-  "retry_after_seconds": 16320,
-  "upgrade_url": "https://3speak.tv/wallet/alice#pro"
-}
-```
-
-A plain `429` without `code` is the per-minute request rate limit, not this.
-
-**Ask before uploading: `GET /api/audio/quota`** (API key; user from the
-`X-User` header or `?owner=`)
-
-```json
-{
-  "enabled": true,
-  "exempt": false,
-  "reason": null,
-  "audio": { "limit": 2, "used": 1, "remaining": 1, "next_at": "2026-11-21T14:32:00Z", "max_seconds": 1200 }
-}
-```
-
-- `reason`: `"pro"`, `"warmup"`, `"listed"` or `null`.
-- `next_at`: when the next slot frees up (the oldest counted upload leaves the
-  24 hours); `null` when nothing is counted. With `remaining: 0` it is when the
-  next upload is possible.
-- Exempt users, and everyone when the limits are off (`enabled: false`), get
-  `exempt: true` and `null` for `limit`, `remaining`, `next_at` and
-  `max_seconds` (no limit).
-
-## 📊 MongoDB Schema
-
-```javascript
-{
-  permlink: "dkojohs",        // Unique 8-char ID
-  author: "meno",
-  cid: "bafybeigdyrzt5...",  // IPFS CID
-  category: "voice_message",  // Content type: voice_message, podcast, song, interview, audiobook, noise_sample
-  duration: 45,               // Seconds
-  format: "mp3",
-  title: "My Audio",
-  description: "This is an example audio recording",
-  tags: ["music", "podcast"],  // Array of content discovery tags
-  thumbnail_url: "https://files.hive.blog/...",  // Optional cover art
-  post_permlink: "my-audio-snap-2026",  // Optional blockchain post reference
-  waveform: {
-    peaks: [0.2, 0.5, ...],
-    length: 100
-  },
-  plays: 150,
-  created: ISODate("2025-11-26T10:30:00Z"),
-  status: "active",
-
-  // MP3 companion (set by jobs/mp3Worker.js)
-  mp3_checked: true,          // false/missing = not looked at yet
-  mp3_status: "converted",    // converted | not_needed | failed
-  mp3_cid: "QmXo...",         // only when converted
-  mp3_size: 2345678,
-  mp3_duration: 146.5,        // measured by ffmpeg
-  mp3_error: null             // why it failed, if it did
-}
-```
-
-### MP3 companions
-
-Browser recordings arrive as WebM/Opus, which the player handles but Apple
-Podcasts and most classic podcast apps refuse. The original is never touched;
-`jobs/mp3Worker.js` adds a 128 kbps CBR MP3 next to it, pinned on the local
-node, and stores it as `mp3_cid`. mp3, m4a and aac uploads are marked
-`not_needed` without being downloaded.
-
-- Runs on **every service start** over everything with `mp3_checked != true`,
-  and again after each upload (in the background, the upload never waits).
-- A failed attempt is retried after `MP3_RETRY_DELAY_MINUTES`; after
-  `MP3_MAX_ATTEMPTS` the upload is marked `mp3_status: "failed"`.
-- ffmpeg comes from the `ffmpeg-static` package (`npm install`), or
-  `FFMPEG_PATH`, or the system `ffmpeg`. If none works the worker stays idle and
-  leaves uploads unchecked.
-- Progress: `GET /api/admin/mp3/stats`, or in Mongo
-  `db['embed-audio'].countDocuments({ mp3_checked: { $ne: true } })`.
-
-## 🎨 Usage Examples
-
-### Embed in HTML
+### Embedding
 
 ```html
-<iframe 
-  src="https://audio.3speak.tv/play?a=dkojohs" 
-  width="600" 
-  height="100" 
-  frameborder="0">
+<iframe
+  src="https://audio.3speak.tv/play?a=dkojohs"
+  width="600" height="100" frameborder="0" allow="autoplay">
 </iframe>
 ```
 
-### React Component
-
 ```jsx
 const AudioMessage = ({ permlink }) => (
-  <iframe 
+  <iframe
     src={`https://audio.3speak.tv/play?a=${permlink}`}
     style={{ border: 'none', width: '100%', height: '100px' }}
     allow="autoplay"
@@ -467,259 +196,307 @@ const AudioMessage = ({ permlink }) => (
 );
 ```
 
-### Player URL Parameters
+An embedder needs no script, key or CORS setup: the player calls its own origin. Add
+`&user=<hive-account>` only for a listener who is really logged in on your page.
 
-| Param | Example | Plays |
-|-------|---------|-------|
-| `a` | `?a=dkojohs` | A single track by permlink |
-| `cid` | `?cid=bafybeig...` | A single track by IPFS CID directly (no database entry needed) |
-| `list` | `?list=<3speak.tv playlist id>` | Every track of a public playlist, in order, advancing automatically |
-| `podcast` | `?podcast=<feed id>` | Every episode of an outside show followed on 3speak.tv |
-| `user` | `?a=dkojohs&user=alice` | Credits the listen to this Hive username (pay-per-listen); omit for anonymous |
+### Read API
 
-### What an embedder needs to do
+| Route | Does |
+|---|---|
+| `GET /api/audio?a=<permlink>` | Metadata of a published track |
+| `GET /api/audio?cid=<cid>` | Gateway URLs for a CID (`mode: "direct"`, no database lookup) |
+| `GET /api/audio/feed` | Paged list of published tracks |
+| `GET /api/audio/playlist/:id` | Audio tracks of a public playlist, in its order |
+| `GET /api/audio/podcast/:id` | Episodes of an outside podcast |
+| `GET /health` | `{ status, timestamp }` |
+| `GET /api/audio/health/ipfs` | Kubo version, repo usage and migration queue (503 when IPFS is down) |
 
-**Nothing.** Listen tracking is entirely self-contained in the player the
-iframe loads from this server — it calls same-origin endpoints, so there are
-no scripts, keys, or CORS setup to add on the host page.
+**Track metadata** (`GET /api/audio?a=dkojohs`):
 
-- **Existing embeds upgrade automatically.** The iframe fetches the player
-  fresh from the server on every load, so once this server is deployed there's
-  nothing to change in already-placed embeds.
-- **Counting requires real playback.** Heartbeats fire from the audio's
-  `audioprocess` event, so a play is counted only after the listener genuinely
-  streams ≥66% of the track. Keep `allow="autoplay"` if you want playback (and
-  therefore counting) to start on its own; otherwise it begins on first play.
-- **Optional — credit a listener (pay-per-listen):** pass a Hive username so a
-  qualifying listen on a `ppl` track earns a credit. The default embed is
-  anonymous and still counts toward the public `plays` stat.
+```json
+{
+  "permlink": "dkojohs",
+  "owner": "badadib",
+  "audio_cid": "bafybei…",
+  "category": "podcast",
+  "duration": 1800,
+  "format": "mp3",
+  "waveform": { "peaks": [0.2, 0.5, 0.8], "length": 100 },
+  "audioUrl": "https://<gateway>/ipfs/bafybei…",
+  "audioUrlFallback": "https://<fallback>/ipfs/bafybei…",
+  "mp3Url": null,
+  "ipfs_status": "pinned_local",
+  "title": "My Podcast",
+  "description": "…",
+  "tags": ["podcast", "tech"],
+  "thumbnail_url": "https://…",
+  "post_permlink": "my-audio-post",
+  "plays": 150
+}
+```
 
-  ```html
-  <iframe src="https://audio.3speak.tv/play?a=dkojohs&user=alice"></iframe>
-  ```
+**Feed** (`GET /api/audio/feed`):
 
-### Handing over the logged-in username
+| Query | Values | Default |
+|---|---|---|
+| `limit` | 1 to 100 | `20` |
+| `offset` | number | `0` |
+| `sort` | `newest`, `oldest`, `plays`, `trending` | `newest` |
+| `category` | e.g. `voice_message`, `podcast`, `song`, `interview` | all |
+| `tag` | one tag | all |
+| `owner` | username | all |
 
-Other frontends can identify the listener two ways — both feed the same
-server-measured session, and both are optional (omit → anonymous, which still
-counts toward `plays`):
+Returns `{ items: [...], pagination: { limit, offset, total, hasMore }, filters }`, each
+item with the fields above plus `likes`, `createdAt`, `mp3_cid` and `mp3Url`.
 
-1. **Embedding the iframe** — append `?user=<hive-username>` to the player URL
-   (as above). The bundled player reads it and sends it on `play-start`. The
-   embedding page is responsible for only setting it for a genuinely logged-in
-   user.
-2. **Calling the API directly** (custom player) — send the username in the
-   `play-start` body:
+**Playlist** (`GET /api/audio/playlist/:id`) returns `{ id, name, owner, cover, tracks }`,
+each track `{ permlink, owner, title, duration, thumbnail_url, post_permlink, created }`.
+Only `access: "public"` playlists are served (private ones and Watch Later answer 404),
+up to 500 tracks; video items, unpublished audio and items by banned or hidden creators
+are left out. A track's title is its Hive post's title when it has one. This route reads
+the `playlists` and `contentcreators` collections, so it needs the database 3speak.tv
+writes to.
 
-   ```http
-   POST /api/audio/play-start
-   { "permlink": "dkojohs", "username": "alice" }
-   ```
+**Podcast** (`GET /api/audio/podcast/:id`, a 24 hex character feed id) returns
+`{ id, kind: "podcast", name, author, cover, link, tracks }`, read from the 3Speak checker
+and cached for 5 minutes. An episode that links to a published 3Speak audio post plays as
+that track (waveform, plays, tip and spots apply); every other episode has
+`kind: "external"` and plays its own file without a waveform, because most podcast hosts
+let other sites stream a file but not read it.
 
-The username is only honoured if it's a valid Hive name; a listen earns the
-author only when the track is `ppl`, the user is logged in, and the user is not
-the track owner (self-listens never pay). Anonymous listens on a `ppl` track
-still credit the author at a reduced weight.
+### Upload API
 
-> **Operators (deploying this server), not embedders:** the new
-> `/api/audio/play-start` + `/play-beat` routes must be live or the player
-> degrades gracefully (no counting, no errors). If you set `LISTEN_BEAT_KEY`,
-> you must also inject the **same** value into the player page as
-> `window.LISTEN_BEAT_KEY`, or the server will require encrypted beats the
-> client can't produce and counting silently stops. Left unset, beats are
-> plaintext and everything works out of the box.
-
-## 🛠️ Development
-
-### Available Scripts
+All routes here need an `X-API-Key` header (or `?api_key=`) from `API_KEYS`, and an
+`X-User` header naming the uploader or owner.
 
 ```bash
-npm start      # Start production server
-npm run dev    # Start development server with nodemon
-npm test       # Run the server/*.test.js suite (node's built-in test runner)
+curl -X POST http://localhost:3000/api/audio/upload \
+  -H "X-API-Key: <your-api-key>" \
+  -H "X-User: badadib" \
+  -F "audio=@episode.mp3" \
+  -F "duration=1800" \
+  -F "format=mp3" \
+  -F "category=podcast" \
+  -F "title=My Podcast" \
+  -F 'tags=["podcast","tech"]'
 ```
 
-### Adding Test Data
+Multipart fields: `audio` (the file) plus `duration` and `format` (both required), and
+optionally `title`, `description`, `tags` (JSON array), `category` (default
+`voice_message`), `thumbnail_url`, `post_permlink`, `waveform` (JSON peaks), `codec`,
+`bitrate`, `sampleRate`, `channels`, `context_type`, `context_id`, `reply_to`.
 
-Create a sample audio entry in MongoDB:
+`201` answer: `{ success, permlink, cid, playUrl, apiUrl }`. Other answers: `400` missing
+file, user or metadata; `403` banned uploader; `413`/`429` [upload limits](#upload-limits);
+`503` IPFS unreachable; `507` IPFS repo full. Uploads are also limited to 10 per minute
+per IP. A first upload by an unknown username creates its `contentcreators` row.
+
+| Route | Body | Auth |
+|---|---|---|
+| `PATCH /api/audio/:permlink` | `{ title?, description?, tags?, post_permlink? }` | key + owner |
+| `PATCH /api/audio/:permlink/thumbnail` | `{ thumbnail_url }` (http or https, max 2048 chars) | key + owner |
+| `PATCH /api/audio/:permlink/post-permlink` | `{ post_permlink }` (max 256 chars) | key + owner |
+| `PATCH /api/audio/:permlink/waveform` | `{ waveform: [[…peaks]], duration }` | none, only fills a missing waveform |
+| `GET /api/audio/quota` | user from `X-User` or `?owner=` | key |
+
+### Listen counting
+
+A play counts once the listener has streamed 66% of the track, never on load:
+
+```http
+POST /api/audio/play-start
+{ "permlink": "dkojohs", "username": "badadib" }      // username optional
+
+→ { "sid": "…", "token": "…", "beatSeconds": 3, "threshold": 0.66, "payable": false, "encrypted": false }
+
+POST /api/audio/play-beat
+{ "sid": "…", "token": "…" }                          // or { "enc": "<base64>" } with LISTEN_BEAT_KEY
+
+→ { "progress": 0.71, "credited": true, "done": true }
+```
+
+- The token is an HMAC over the session, track and IP. The server credits only the real
+  time between beats, capped per beat, so a paused tab or a forged beat adds nothing.
+- At 66% the server bumps `plays` and writes one row to `audio-listen-log` with
+  `username` (or null), `ip`, `listenedSeconds`, `trackDuration`, `ppl`, `payable`,
+  `createdAt` and `listenDate`. Repeats inside the dedupe windows are not counted.
+- `payable: true` only when the track has `ppl: true` (pay per listen), the listener gave a
+  valid Hive name and is not the owner. Anything that pays out per row must skip rows
+  with `payable: false`.
+- A track with no duration cannot be measured: `play-start` records one listen per IP per
+  day and answers `{ "tracked": false, "reason": "no_duration" }`.
+- `LISTEN_BEAT_KEY` makes beats AES-256-GCM ciphertext. The player needs the same value as
+  `window.LISTEN_BEAT_KEY`, or counting stops. The key ships in public JS, so it only
+  deters casual tampering; the time measurement is the real protection.
+- `POST /api/audio/play` (`{ permlink }`) is the old count-on-load route, kept for outside
+  callers. The bundled player does not use it.
+
+Separately, the player reports anonymous listening time to the 3Speak checker
+(`src/listen-time.js`).
+
+### Upload limits
+
+On by default; `AUDIO_DAILY_LIMITS_ENABLED=false` turns them off for your instance. A
+limited account may upload `AUDIO_LIMIT_PER_DAY` files per rolling 24 hours, each at most
+`AUDIO_MAX_DURATION_SECONDS` long.
+
+- **Exempt:** users with `premium: true` (and no past `premium_expires_at`) in
+  `AUDIO_PRO_USERS_COLLECTION`, warm-up accounts the checker reports as incubating that
+  have no Hive account, and `AUDIO_LIMIT_EXEMPT`.
+- **Not counted:** uploads made with a key from `AUDIO_IMPORT_API_KEYS` plus the header
+  `X-Upload-Source: rss_import` (stored as `upload_source: "rss_import"`).
+- **Length:** the larger of the declared `duration` and the measured one (ffprobe, else an
+  ffmpeg decode). The count is checked before the file is read and the length before it
+  is pinned, so a refused upload stores nothing.
+- Every lookup fails open: if the database, the checker or Hive cannot answer, the upload
+  goes through.
+
+Refusals carry a stable `code`, a full sentence in `message` and a short `error`:
+
+```json
+// 413
+{ "error": "Audio too long", "code": "audio_too_long", "message": "…",
+  "max_seconds": 1200, "duration": 1320, "upgrade_url": "…" }
+
+// 429, plus a Retry-After header
+{ "error": "Daily audio upload limit reached", "code": "daily_audio_limit", "message": "…",
+  "limit": 2, "used": 2, "next_at": "2026-11-21T14:32:00Z", "retry_after_seconds": 16320, "upgrade_url": "…" }
+```
+
+A `429` without `code` is the per-minute rate limit. `GET /api/audio/quota` answers
+`{ enabled, exempt, reason, audio: { limit, used, remaining, next_at, max_seconds } }`,
+with `reason` one of `"pro"`, `"warmup"`, `"listed"` or `null`; exempt users get `null`
+limits.
+
+### Admin API
+
+`/admin` and `/admin/users` are browser pages for the routes below. `POST
+/api/admin/login` with `{ password }` returns a token; send it as
+`Authorization: Bearer <token>`.
+
+| Route | Does |
+|---|---|
+| `GET /api/admin/stats` · `/files` · `/category-stats` | Storage figures and the file list |
+| `DELETE /api/admin/files/:permlink` | Delete a file |
+| `GET /api/admin/users` · `/users/:username` | Uploaders, with stats |
+| `PUT /api/admin/users/:username/ban` | Toggle an uploader's ban |
+| `GET /api/admin/mp3/stats` | MP3 companion progress |
+| `GET /api/admin/migrations/stats` · `/pending` · `/schedule` | Migration queue |
+| `POST /api/admin/migrations/trigger` | Run the migration now |
+| `POST /api/admin/migrations/:permlink` · `/retry/:permlink` | Migrate or retry one file |
+
+### Data model
+
+Audio rows live in `MONGODB_COLLECTION_AUDIO` (default `embed-audio`). Only rows with
+`status: "published"` are served.
 
 ```javascript
-db.audio_messages.insertOne({
-  permlink: "testaud1",
-  author: "testuser",
-  cid: "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabq...",
-  duration: 45,
-  format: "mp3",
-  bitrate: 128,
-  waveform: { peaks: Array(100).fill(0).map(() => Math.random()), length: 100 },
-  title: "Test Audio",
-  plays: 0,
-  created: new Date(),
-  status: "active",
-  visibility: "public"
-});
+{
+  permlink: "dkojohs",             // 8 characters, unique
+  owner: "badadib",
+  audio_cid: "bafybei…",
+  ipfs_status: "pinned_local",     // or pinned_distributed after migration
+  category: "voice_message",       // free text; song, podcast, interview get migrated
+  duration: 45, format: "webm", size: 123456,
+  title: "…", description: "…", tags: ["…"],
+  thumbnail_url: null, post_permlink: null,   // post_permlink links the Hive post
+  waveform: { peaks: [/* … */], length: 100 },
+  plays: 0, ppl: false,
+  upload_source: "upload",         // or rss_import
+  migration_status: "pending",     // pending | skip | migrated | …
+  pin_until: null,                 // set to +24h for demo uploads
+  mp3_checked: true, mp3_status: "converted", mp3_cid: "Qm…", mp3_duration: 146.5,
+  createdAt: ISODate("…")
+}
 ```
 
-Test it:
-```
-http://localhost:3000/play?a=testaud1
-```
+Indexes are created on start. Other collections: `contentcreators` (uploaders, bans),
+`audio-listen-log` and `audio-listen-sessions` (TTL), and, read only, `playlists` and the
+premium collection.
 
-## 🚀 CI/CD
+### Background jobs
 
-GitHub Actions runs on every push/PR to `main`:
+- **MP3 companions** (`server/jobs/mp3Worker.js`). Browser recordings are WebM/Opus,
+  which many podcast apps refuse. On every start and after each upload the worker adds a
+  CBR MP3 next to the original, pins it locally and stores `mp3_cid`. mp3, m4a and aac
+  are marked `not_needed`. Failures retry after `MP3_RETRY_DELAY_MINUTES`, up to
+  `MP3_MAX_ATTEMPTS`. With no working ffmpeg it stays idle.
+- **Migration** (`server/jobs/migrationWorker.js`, production only). Once a day at
+  `MIGRATION_SCHEDULE_HOUR` it pins `song`, `podcast` and `interview` uploads on the
+  second node (`IPFS_SUPERNODE_URL`, Kubo API), verifies the pin and marks them
+  `pinned_distributed`. Voice messages and demo uploads stay local.
+- **Pin audit** (`node server/audit-pins.js`). One-off check of database rows marked
+  `pinned_local` against the local node's pins.
 
-- **CI** ([.github/workflows/ci.yml](.github/workflows/ci.yml)) — `npm install`, `npm run lint` (ESLint), `npm test` on Node 18.x and 20.x. (`package-lock.json` is gitignored in this repo, so CI uses `npm install` rather than `npm ci`.)
-- **Deploy** ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) — on push to `main`: re-runs lint/test, then SSHes into the production host, `git reset --hard origin/main`, `npm install --omit=dev`, and restarts the `snapieaudio` systemd service.
+## Development and tests
 
-Deploy needs these repo secrets (Settings → Secrets and variables → Actions):
-
-| Secret | Description |
-|--------|--------------|
-| `DEPLOY_HOST` | Server hostname/IP |
-| `DEPLOY_USER` | SSH user |
-| `DEPLOY_SSH_KEY` | Private key for that user (add the matching public key to the server's `authorized_keys`) |
-| `DEPLOY_PORT` | SSH port (optional, defaults to 22) |
-| `DEPLOY_PATH` | Path to the checkout on the server (e.g. `/var/www/snapieaudio`, matching [snapieaudio.service](snapieaudio.service)) |
-
-The SSH user needs passwordless `sudo` for exactly the restart command, e.g. via `visudo`:
-
-```
-deploy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart snapieaudio
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | 3000 | Server port |
-| `MONGODB_URI` | mongodb://localhost:27017 | MongoDB connection |
-| `DB_NAME` | snapieaudio | Database name |
-| `IPFS_PRIMARY_GATEWAY` | ipfs.3speak.tv/ipfs/ | Primary IPFS gateway |
-| `IPFS_FALLBACK_GATEWAY_1` | dweb.link/ipfs/ | Fallback gateway #1 |
-| `IPFS_FALLBACK_GATEWAY_2` | cloudflare-ipfs.com/ipfs/ | Fallback gateway #2 |
-| `RATE_LIMIT_WINDOW_MS` | 60000 | Rate limit window |
-| `RATE_LIMIT_MAX_REQUESTS` | 100 | Max requests per window |
-| `ENABLE_MP3_TRANSCODE` | true | `false` turns the MP3 companion worker off |
-| `MP3_BITRATE` | 128k | MP3 companion bitrate (CBR) |
-| `MP3_MAX_ATTEMPTS` | 3 | Attempts before an upload is marked `failed` |
-| `MP3_RETRY_DELAY_MINUTES` | 60 | Wait between attempts |
-| `MP3_FETCH_TIMEOUT_SECONDS` | 300 | Timeout for reading an original from IPFS |
-| `FFMPEG_PATH` | (ffmpeg-static) | Use a specific ffmpeg binary |
-| `FFPROBE_PATH` | ffprobe | ffprobe for measuring upload length (falls back to an ffmpeg decode) |
-| `AUDIO_DAILY_LIMITS_ENABLED` | true | `false` switches the free-account upload limits off |
-| `AUDIO_LIMIT_PER_DAY` | 2 | Audio uploads per rolling 24 hours for free accounts |
-| `AUDIO_MAX_DURATION_SECONDS` | 1200 | Longest audio a free account may upload |
-| `AUDIO_LIMIT_EXEMPT` | (empty) | Comma list of usernames without limits |
-| `AUDIO_IMPORT_API_KEYS` | (empty) | Server-only keys (also in `API_KEYS`) whose `X-Upload-Source: rss_import` uploads are never counted |
-| `AUDIO_PRO_USERS_COLLECTION` | embed-users | Collection holding the `premium` flag |
-| `AUDIO_UPGRADE_URL` | https://3speak.tv/wallet/{user}#pro | `upgrade_url` in refusals (`{user}` is filled in) |
-| `CHECKER_URL` | https://checker.3speak.tv | Checker, for warm-up (incubation) lookups and podcasts |
-
-### MongoDB Indexes
-
-Indexes are automatically created on startup:
-
-```javascript
-db.audio_messages.createIndex({ permlink: 1 }, { unique: true })
-db.audio_messages.createIndex({ author: 1, created: -1 })
-db.audio_messages.createIndex({ cid: 1 })
-db.audio_messages.createIndex({ created: -1 })
+```bash
+npm run dev    # nodemon server/index.js
+npm start      # node server/index.js
+npm run lint   # ESLint
+npm test       # node --test server/*.test.js
 ```
 
-## 🌐 Live Pages
+The unit tests (`server/*.test.js`) cover the player's ad and listen-time scripts, the
+upload controller, upload limits, MP3 handling, playlists and podcasts, with no database
+or IPFS node. The `server/test-*.js` and `test-thumbnail-api.sh` files are manual scripts
+against a running server and database.
 
-- **Landing Page**: `https://audio.3speak.tv/` - Project overview and features
-- **Demo Upload**: `https://audio.3speak.tv/demo` - Try uploading audio (24h expiry)
-- **Admin Panel**: `https://audio.3speak.tv/admin` - Storage management (password protected)
-- **Player**: `https://audio.3speak.tv/play?a=PERMLINK` - Audio playback
+[CI](.github/workflows/ci.yml) runs `npm ci`, lint and tests on Node 20 and 24 for every
+push and pull request to `main`. [Deploy](.github/workflows/deploy.yml) runs the same
+checks on push to `main`, then deploys over SSH using `DEPLOY_*` repository secrets.
+[`snapieaudio.service`](snapieaudio.service) is a sample systemd unit.
 
-## 🚦 Roadmap
+## Repository layout
 
-### Phase 1: MVP ✅
-- [x] Basic player with WaveSurfer.js
-- [x] MongoDB schema & API endpoints
-- [x] CID-based playback
-- [x] IPFS gateway fallback
-- [x] Play tracking
-
-### Phase 2: Upload System ✅
-- [x] Audio upload endpoint with API key auth
-- [x] IPFS pinning (local node)
-- [x] Permlink auto-generation
-- [x] File validation & processing
-- [x] Demo upload page
-- [x] Admin storage management panel
-
-### Phase 3: Enhancement
-- [x] Speed control UI
-- [x] Playlist embed
-- [x] Podcast embed
-- [x] Tip button
-- [x] Sponsored ad spots
-- [ ] Download functionality
-- [ ] Share buttons
-- [ ] Mobile app integration
-
-### Phase 4: Integration
-- [ ] React component library
-- [ ] Snapie chat integration
-- [x] Hive blockchain support (tip button, pay-per-listen crediting)
-- [x] Podcast RSS feeds (via outside podcast embed)
-
-## 🐛 Troubleshooting
-
-### Player won't load audio
-
-1. Check IPFS gateway is accessible:
-   ```bash
-   curl https://ipfs.3speak.tv/ipfs/<your-cid>
-   ```
-
-2. Verify MongoDB connection:
-   ```bash
-   mongosh mongodb://localhost:27017/snapieaudio
-   db.audio_messages.find()
-   ```
-
-3. Check browser console for errors
-
-### CORS issues
-
-If embedding in external sites, update CORS settings in `server/index.js`:
-
-```javascript
-app.use(cors({
-  origin: ['https://yourdomain.com'],
-  credentials: true
-}));
+```
+.
+├── server/
+│   ├── index.js              # Express app: pages, static files, routes, workers
+│   ├── routes/
+│   │   ├── audio.js          # /api/audio: read, upload, edit, listen, health
+│   │   └── admin.js          # /api/admin: password-protected management
+│   ├── controllers/          # audio, listen, playlist, podcast, admin handlers
+│   ├── models/               # AudioMessage (embed-audio), ContentCreator (contentcreators)
+│   ├── middleware/           # API key check, multer upload
+│   ├── utils/                # upload limits, duration probe, mp3, Hive posts, size parsing
+│   ├── jobs/                 # mp3Worker, migrationWorker
+│   ├── audit-pins.js         # one-off pin audit
+│   └── *.test.js             # node:test suites
+├── src/
+│   ├── index.html            # player page (/play)
+│   ├── audio-player.js       # player: modes, playlists, waveform, chips, tip, counting
+│   ├── audio-ad.js           # sponsored audio spots
+│   ├── listen-time.js        # listening time reports
+│   ├── audio-styles.css      # player styles
+│   ├── index-landing.html    # landing page (/)
+│   ├── docs.html             # API docs page (/docs)
+│   ├── demo.html             # demo upload page (/demo)
+│   └── admin*.html           # admin pages (/admin, /admin/users)
+├── .github/workflows/        # ci.yml, deploy.yml
+├── snapieaudio.service       # sample systemd unit
+└── .env.example              # settings template
 ```
 
-## 🤝 Contributing
+## Security notes
 
-Contributions welcome! Please:
+- **Always set `ADMIN_PASSWORD`.** The admin token is `base64("admin:" + password)`, so
+  it is as secret as the password itself, and with the variable unset the expected token
+  is a fixed, guessable string. Serve the admin pages over HTTPS only.
+- **API keys are full upload rights.** Any holder can upload as any `X-User`; give keys
+  only to servers you trust, and keep `AUDIO_IMPORT_API_KEYS` server-side. The key used
+  by `/demo` ships in that page's HTML, so treat `DEMO_API_KEY` as public.
+- **`LISTEN_BEAT_KEY` is not a secret** once set, since the player needs it in public
+  JS. Listen counting relies on server-side timing, the HMAC token and dedupe windows.
+- **CORS is open** (`cors()` with no origin list) because the player and read API are
+  meant to be embedded. Restrict it in `server/index.js` if your deployment needs to.
+- **Rate limits key on the client IP.** Behind a proxy set `TRUST_PROXY` to the right
+  number of hops, or every listener shares one bucket.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+## Contributing
 
-## 📄 License
+Issues and pull requests are welcome. Chat with us on [Discord](https://discord.gg/NSFS2VGj83).
 
-MIT License - see LICENSE file for details
+## License
 
-## 🔗 Related Projects
-
-- [WaveSurfer.js](https://wavesurfer-js.org/) - Audio waveform visualization
-- [3speak](https://3speak.tv/) - Decentralized video platform
-- [IPFS](https://ipfs.tech/) - Distributed file system
-
-## 📧 Contact
-
-For questions or support, reach out to the 3speak/Snapie team.
-
----
-
-**Built with ❤️ for the 3speak/Snapie ecosystem**
+[MIT](LICENSE) © Mantequilla Soft.
